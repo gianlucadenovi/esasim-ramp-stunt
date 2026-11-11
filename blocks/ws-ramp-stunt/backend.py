@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 8 · machine block, Python: def run(ctx)
+# Ramp stunt (ws-ramp-stunt) · version 9 · machine block, Python: def run(ctx)
 # A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it on the white line: the controller learns
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
@@ -129,10 +129,11 @@ FAN_G = 2.0                       # both together pull up to 2 g of the full car
 FAN_TAU = 0.25
 # cold-gas nozzles: position (body), direction of the force on the car (body), most thrust (N). As on the stunt car:
 # four under the floor blowing down, a pair just behind the front wheels and a pair behind the rear wheels (lift; fired
-# on one side only they roll the car), one on each flank blowing sideways, and four in the tail blowing back (to
+# on one side only they roll the car), one on each flank blowing sideways (right above the front pair, level with the
+# tops of the wheels), and four in the tail blowing back (to
 # accelerate it fast). None blows upward.
 NOZ_POS = [(1.00, 0.80, -0.20), (1.00, -0.80, -0.20), (-1.85, 0.85, -0.18), (-1.85, -0.85, -0.18),      # down: behind the front wheels, behind the rear ones
-           (0.25, 0.96, 0.22), (0.25, -0.96, 0.22),                                                    # on the flanks
+           (1.00, 0.96, 0.15), (1.00, -0.96, 0.15),                                                    # on the flanks: right above the front pair, level with the tops of the wheels
            (-2.12, 0.35, 0.10), (-2.12, -0.35, 0.10), (-2.10, 0.72, -0.05), (-2.10, -0.72, -0.05)]   # in the tail
 NOZ_DIR = [(0, 0, 1)] * 4 + [(0, -1, 0), (0, 1, 0)] + [(1, 0, 0)] * 4
 NOZ_MAX = [12300.0] * 4 + [3000.0] * 2 + [4500.0] * 4   # the down nozzles: together as much lift as before they moved (38 kN, 1.75 g)
