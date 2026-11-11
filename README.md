@@ -91,6 +91,6 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Workspace blocks it uses
 
-- [Ramp stunt](blocks/ws-ramp-stunt) · version 7
+- [Ramp stunt](blocks/ws-ramp-stunt) · version 8
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.
