@@ -6,7 +6,7 @@
     "name": "2 · The stunt",
     "description": "Press Start: the car drives up the crescent ramp on its suction fans, holds upside down, drives off the lip, and the learned policy lands it with its air thrusters, live in 3D.",
     "published_version": 1,
-    "updated": "2026-11-11 03:47:41",
+    "updated": "2026-11-11 04:22:32",
     "graph": {
         "nodes": [
             {
@@ -28,11 +28,9 @@
                 "y": 200,
                 "params": {
                     "mode": "Run the stunt",
-                    "hold": 3,
-                    "exit": 7,
+                    "exit": 6,
                     "wind": 2,
                     "speed": 8,
-                    "hold_back": 7,
                     "runup": 60,
                     "runs_per_run": 0,
                     "auto_start": false
@@ -59,7 +57,7 @@
                 "params": {
                     "quality": "high",
                     "events_channel": "event",
-                    "controls": "button Start\nslider exit 3 10 7\nslider hold 0 10 3\nslider wind 0 10 2",
+                    "controls": "button Start\nslider exit 4 10 6\nslider wind 0 10 2",
                     "control_channel": "control",
                     "camera": "free"
                 },
@@ -192,7 +190,38 @@
         ],
         "notes": [],
         "dash": {
-            "items": []
+            "items": {
+                "main": {
+                    "x": 0,
+                    "y": 0,
+                    "w": 6,
+                    "h": 11
+                },
+                "cam_chase": {
+                    "x": 6,
+                    "y": 0,
+                    "w": 6,
+                    "h": 9
+                },
+                "cam_onboard": {
+                    "x": 0,
+                    "y": 11,
+                    "w": 6,
+                    "h": 10
+                },
+                "cam_side": {
+                    "x": 6,
+                    "y": 9,
+                    "w": 6,
+                    "h": 9
+                },
+                "runs_tbl": {
+                    "x": 6,
+                    "y": 18,
+                    "w": 6,
+                    "h": 3
+                }
+            }
         }
     }
 }

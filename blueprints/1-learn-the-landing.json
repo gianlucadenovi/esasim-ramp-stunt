@@ -6,9 +6,21 @@
     "name": "1 · Learn the landing",
     "description": "Thousands of cars at once on the GPU learn to fly off the lip of the ramp and land, lesson by lesson; one attempt is replayed in 3D every few seconds. The policy goes to the stunt-policy dataset.",
     "published_version": 1,
-    "updated": "2026-11-11 03:29:29",
+    "updated": "2026-11-11 03:51:14",
     "graph": {
         "nodes": [
+            {
+                "id": "so_far",
+                "type": "dataset",
+                "x": -380,
+                "y": 200,
+                "params": {
+                    "dataset": "12",
+                    "version": "latest",
+                    "pattern": "*.pt"
+                },
+                "title": "Policies so far (go on from the furthest)"
+            },
             {
                 "id": "learn",
                 "type": "ws-ramp-stunt",
@@ -107,7 +119,7 @@
                     "channel": "train",
                     "ymin": "0",
                     "ymax": "100",
-                    "title": "Landing (%): this lesson, and off the lip"
+                    "title": "Landing (%): this lesson, and let go at the top"
                 },
                 "title": "Attempts that land"
             },
@@ -153,6 +165,17 @@
             }
         ],
         "edges": [
+            {
+                "id": "so_far.files>learn.policy",
+                "from": {
+                    "node": "so_far",
+                    "port": "files"
+                },
+                "to": {
+                    "node": "learn",
+                    "port": "policy"
+                }
+            },
             {
                 "id": "learn.telemetry>tel_car.from",
                 "from": {

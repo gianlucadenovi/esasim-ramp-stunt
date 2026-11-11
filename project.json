@@ -13,7 +13,7 @@
             "name": "1 · Learn the landing",
             "file": "blueprints/1-learn-the-landing.json",
             "published_version": 1,
-            "nodes": 10
+            "nodes": 11
         },
         {
             "name": "2 · The stunt",
@@ -25,7 +25,7 @@
     "blocks": [
         {
             "id": "ws-ramp-stunt",
-            "version": 1,
+            "version": 2,
             "name": "Ramp stunt"
         }
     ]

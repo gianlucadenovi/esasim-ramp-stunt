@@ -1,14 +1,14 @@
 # Ramp stunt
 
-A hypercar drives up a 21 m crescent ramp, hangs upside down on its suction fans, drives off the lip, and ten cold-gas nozzles land it: learn the landing by PPO on the GPU, or run the stunt live.
+A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; ten cold-gas nozzles roll it over sideways and land it: learn the landing by PPO from simulated
 
-What to do: Learn the landing (on the machine with the NVIDIA GPU) or Run the stunt (any machine). The physics: a rigid car (1,950 kg plus 250 kg of air) with suspension, tyres, all-wheel drive and steering; ten body points that must never touch; two suction fans under the floor (up to 2 g, only while the skirts seal); ten cold-gas nozzles (four blowing down, four up, two sideways in the nose) whose air leaves the car; a 5 m wide concrete crescent ramp (16 m, 9 m and 10 m arcs, then 8 m straight at 168 deg to its lip about 20.7 m up); drag and wind. A scripted driver takes the car up the ramp (the fans pull just hard enough, fully on upside down), stops Hold before the lip metres before it, waits Hold seconds, then drives off at Exit speed; from the moment the front wheels leave the lip the policy flies it 50 times a second. Learn the landing: four lessons (a short drop nearly level; on its side or nose down 4-10 m up; upside down 10-19 m up; off the lip, starts made by driving cars up the ramp); a lesson opens when half the attempts of the one before land. Landed: tyres on the tarmac under 3 m/s down and 15 deg of lean, nothing else touching, level a second later. Telemetry: train (lesson, landed %, landed_full % off the lip, touchdown_mps, air_kg, attempts, steps_per_s, minutes, outcomes.*), car (one attempt replayed in the 3D view every Replay every seconds, esasim.car/1), event (lessons). The policy is written when learning ends (time limit, target, or the button Finish now on the control channel) as stunt_policy_<date>_<NN>pct.pt: send it to a dataset and wire that dataset to Policies, so each training goes on from the furthest one. Run the stunt: wire the same dataset to Policies; the newest policy that lands off the lip flies (or the one named in Policy file). The car waits on the start line; the button Start (control channel) runs the stunt in real time, streamed on the car channel for a 3D view; Hold, Exit and Wind sliders change the next run; runs.csv records each one.
+What to do: Learn the landing (on the machine with the NVIDIA GPU) or Run the stunt (any machine). The physics: a rigid car (1,950 kg plus 250 kg of air) with suspension, tyres, all-wheel drive and steering; ten body points that must never touch; two suction fans under the floor (up to 2 g, only while the skirts seal); ten cold-gas nozzles whose air leaves the car: four under the floor at the corners blowing down (lift; fired on one side only they roll the car), one on each flank blowing sideways, four in the tail blowing back (fast acceleration), none blowing up; a 5 m wide concrete crescent ramp (16 m, 9 m and 10 m arcs, then 8 m straight at 168 deg to its end about 20.7 m up); drag and wind. A scripted driver takes the car up the ramp, upside down over the top on the fans, easing off to Exit speed, and drives off the end without stopping; as the front wheels pass the end the fans stop and the car falls with its momentum. From then the policy flies it 50 times a second, seeing it only through its sensors: an IMU (gyro with bias, accelerometer, attitude), two laser rangefinders (floor looking down, roof looking up, to 40 m) and an RTK GNSS receiver (10 Hz), each with noise. Learn the landing: four lessons (a short drop nearly level; on its side or nose down 6-12 m up; upside down and moving 12-20 m up; over the end of the ramp, starts made by driving cars up it); a lesson opens when half the attempts of the one before land. Landed: tyres on the tarmac under 3 m/s down and 15 deg of lean, nothing else touching, level a second later; on its wheels it brakes. Telemetry: train (lesson, landed %, landed_full % over the end, touchdown_mps, air_kg, attempts, steps_per_s, minutes, outcomes.*), car (one attempt replayed in the 3D view every Replay every seconds, esasim.car/1, with impacts, fan spin and the laser readings), event (lessons). The policy is written when learning ends (time limit, target, or the button Finish now on the control channel) as stunt_policy_<date>_<NN>pct.pt: send it to a dataset and wire that dataset to Policies, so each training goes on from the furthest one (policies of earlier versions of the stunt are skipped). Run the stunt: wire the same dataset to Policies; the newest policy that lands over the end flies (or the one named in Policy file). The car waits on the start line; the button Start (control channel) runs the stunt in real time, streamed on the car channel for a 3D view (3D view 1.43 or later: the car, its sounds and its breaking up in a crash); Exit and Wind sliders change the next run; runs.csv records each one.
 
 An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Python (`backend.py`, `def run(ctx)`).
 
 | | |
 |---|---|
-| Block | `ws-ramp-stunt` · version 1 |
+| Block | `ws-ramp-stunt` · version 2 |
 | Workspace | Gianluca De Novi's workspace |
 | Author | Gianluca De Novi |
 | Runs on | Any machine, NVIDIA GPU |
@@ -23,9 +23,9 @@ An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Pyth
 
 | Port | Type | Description |
 |---|---|---|
-| `policy` Policy | Files (pt) | Learn the landing: stunt_policy_<date>_<NN>pct.pt (network, input scaling, lesson reached, share of attempts off the lip that land) |
+| `policy` Policy | Files (pt) | Learn the landing: stunt_policy_<date>_<NN>pct.pt (network, input scaling, lesson reached, share of attempts over the end that land) |
 | `curve` Learning curve | Table (csv) | Learn the landing: training.csv, minute by minute |
-| `runs` Runs | Table (csv) | Run the stunt: runs.csv, each run's outcome, touchdown speed, lean and air used |
+| `runs` Runs | Table (csv) | Run the stunt: runs.csv, each run's outcome, touchdown speed, lean, air used and impact |
 
 ## Settings
 
@@ -35,17 +35,15 @@ An [EsaSim](https://esacode.com/) blueprint block: it runs on a machine, in Pyth
 | `accelerator` Accelerator | select | `"auto"` | Learning: auto takes the NVIDIA GPU when this PyTorch can use it |
 | `cars` Cars at once | number | `4096` | Learning: parallel attempts (the CPU uses at most 1024) |
 | `minutes` Minutes at most | number | `60` |  |
-| `target` Stop at landing rate | number | `0.9` | Share of attempts off the lip that land, to stop early |
+| `target` Stop at landing rate | number | `0.9` | Share of attempts over the end of the ramp that land, to stop early |
 | `replay_every` Replay every (s) | number | `12` |  |
 | `from_scratch` Start from scratch | bool | `false` | On: ignore the policies wired to Policies and learn from lesson 1 |
 | `seed` Seed | number | `1` |  |
-| `hold` Hold (s) | number | `3` | The stunt: seconds upside down before driving off the lip |
-| `exit` Exit speed (m/s) | number | `7` | The stunt: speed asked off the lip (slower than about 4 m/s scrapes the lip) |
+| `exit` Exit speed (m/s) | number | `6` | The stunt: the speed it drives over the end of the ramp at, and falls with |
 | `wind` Wind (m/s) | number | `2` |  |
 | `speed` Run-in speed (m/s) | number | `8` |  |
-| `hold_back` Hold before the lip (m) | number | `7` | Where the car stops upside down, measured back from the lip |
 | `runup` Run-up (m) | number | `60` |  |
-| `policy_file` Policy file | text | `""` | Empty: the newest policy that lands off the lip |
+| `policy_file` Policy file | text | `""` | Empty: the newest policy that lands over the end |
 | `runs_per_run` Stunts per run | number | `1` | 0: keep waiting for Start after each stunt |
 | `auto_start` Start by itself | bool | `false` |  |
 | `channel` Training channel | text | `"train"` |  |

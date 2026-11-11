@@ -78,11 +78,11 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 10 blocks · version 1
+- [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 11 blocks · version 1
 - [2 · The stunt](blueprints/2-the-stunt.json) · 8 blocks · version 1
 
 ### Workspace blocks it uses
 
-- [Ramp stunt](blocks/ws-ramp-stunt) · version 1
+- [Ramp stunt](blocks/ws-ramp-stunt) · version 2
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.

@@ -1,15 +1,15 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 1 · machine block, Python: def run(ctx)
-# A hypercar drives up a 21 m crescent ramp, hangs upside down on its suction fans, drives off the lip, and ten cold-gas nozzles land it: learn the landing by PPO on the GPU, or run the stunt live.
+# Ramp stunt (ws-ramp-stunt) · version 2 · machine block, Python: def run(ctx)
+# A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; ten cold-gas nozzles roll it over sideways and land it: learn the landing by PPO from simulated
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
 #
 # Inputs   ctx.inputs["id"] is a list of files: .path .name .size .read_text() .read_json()
 #   policy      Files (pt)                Policies · optional · The stunt-policy dataset (stunt_policy_*.pt): learning goes on from the furthest one; the stunt flies the newest that lands
 # Outputs  ctx.output("id", "name.ext") is the path to write; ctx.write_json / ctx.write_text
-#   policy      Files (pt)                Policy · Learn the landing: stunt_policy_<date>_<NN>pct.pt (network, input scaling, lesson reached, share of attempts off the lip that land)
+#   policy      Files (pt)                Policy · Learn the landing: stunt_policy_<date>_<NN>pct.pt (network, input scaling, lesson reached, share of attempts over the end that land)
 #   curve       Table (csv)               Learning curve · Learn the landing: training.csv, minute by minute
-#   runs        Table (csv)               Runs · Run the stunt: runs.csv, each run's outcome, touchdown speed, lean and air used
+#   runs        Table (csv)               Runs · Run the stunt: runs.csv, each run's outcome, touchdown speed, lean, air used and impact
 #   telemetry   Live telemetry            ctx.telemetry("channel", data) while it runs
 # Settings ctx.params["key"]
 #   mode        select    What to do = "Learn the landing" of Learn the landing | Run the stunt
@@ -20,11 +20,9 @@
 #   replay_every number    Replay every (s) = 12
 #   from_scratch bool      Start from scratch = false
 #   seed        number    Seed = 1
-#   hold        number    Hold (s) = 3
-#   exit        number    Exit speed (m/s) = 7
+#   exit        number    Exit speed (m/s) = 6
 #   wind        number    Wind (m/s) = 2
 #   speed       number    Run-in speed (m/s) = 8
-#   hold_back   number    Hold before the lip (m) = 7
 #   runup       number    Run-up (m) = 60
 #   policy_file text      Policy file = ""
 #   runs_per_run number    Stunts per run = 1
@@ -39,18 +37,19 @@
 # ── end of EsaSim block header ────────────────────────────────────────
 
 """Ramp stunt. A two-seat electric hypercar drives up a crescent ramp about 21 m high that bends over until it is
-nearly a ceiling, stays on it held only by suction fans, stops there upside down, drives off the lip, and ten
-compressed-air nozzles roll it upright, slow its fall and set it down on the tarmac. Everything is computed by the
-physics.
+nearly a ceiling, held on it only by suction fans, over its top and off its end. The fans stop, and it falls with all
+its momentum; ten compressed-air nozzles roll it over sideways, slow its fall and set it down on the tarmac.
+Everything is computed by the physics.
 
 What to do: Learn the landing: the controller of the nozzles learns it by reinforcement learning (PPO), thousands of
-cars at once on the GPU, lesson by lesson (a short drop nearly level; on its side or nose down; upside down; off the
-lip after the scripted drive up the ramp); a lesson opens when half the attempts of the one before land. Landed: on its
-four wheels on the tarmac, under 3 m/s down and 15 degrees of lean at touchdown, nothing but the tyres touching,
-settled level a second later. One attempt is replayed in the 3D view every few seconds; the policy
-(stunt_policy_<date>_<NN>pct.pt) is written when learning ends, with the best one seen off the lip.
+cars at once on the GPU, lesson by lesson (a short drop nearly level; on its side or nose down; upside down and moving;
+over the end of the ramp after the scripted drive up it); a lesson opens when half the attempts of the one before land.
+It sees the car only through its sensors: an IMU, two laser rangefinders (floor and roof) and an RTK GNSS receiver, each
+with its noise. Landed: on its four wheels on the tarmac, under 3 m/s down and 15 degrees of lean at touchdown, nothing
+but the tyres touching, settled level a second later. One attempt is replayed in the 3D view every few seconds; the
+policy (stunt_policy_<date>_<NN>pct.pt) is written when learning ends, with the best one seen over the end.
 Run the stunt: the whole stunt played in real time: the car waits on the start line; press Start and it drives up the
-ramp with its fans on, holds upside down, drives off the lip, and the newest policy that lands flies it down."""
+ramp with its fans on, over the top and off its end, and the newest policy that lands flies it down."""
 import math
 
 try:
@@ -84,8 +83,9 @@ def pick_device(want):
 # ── ramp stunt physics ─────────────────────────────────────────────────────────────────────────────────────────
 # The stunt as shown at a rocket test site in central Texas, at night: a two-seat electric hypercar drives up a
 # crescent-shaped ramp about 21 m high that bends over until it is nearly a ceiling, stays on it held by suction fans
-# (up to 2 g), stops there almost upside down, drives off the lip, and its compressed-air thrusters (ten nozzles fed by
-# about 250 kg of air in two carbon-overwrapped tanks) roll it upright, slow its fall and set it down on the tarmac.
+# (up to 2 g) over its top, upside down, and off its end; the fans stop, it falls with its momentum, and its
+# compressed-air thrusters (ten nozzles fed by about 250 kg of air in two carbon-overwrapped tanks) roll it over
+# sideways, slow its fall and set it down on the tarmac.
 # Everything is computed by the physics, many cars at once (PyTorch, on the GPU or the CPU):
 #   * the car: a rigid body (6 degrees of freedom), 1,950 kg empty plus its air, 4.31 x 1.90 x 1.15 m, inertia from its shape;
 #   * four wheels: suspension (spring, damper, bump stop) and tyres (grip that saturates, rolling resistance), all-wheel
@@ -93,12 +93,13 @@ def pick_device(want):
 #   * the body: ten points around it (bumpers, sills, roof) that touch the ground or the ramp: a crash;
 #   * two suction fans under the floor: they pull the car toward the surface below the floor only while the skirts seal
 #     (the gap is small and the surface faces the floor), up to 2 g together, spinning up and down in a quarter second;
-#   * ten cold-gas nozzles: four at the corners blowing down (lift), four blowing up (to roll and pitch with couples),
-#     two at the nose blowing sideways (yaw); valves open in 25 ms; thrust held by a regulator until the tanks run low;
+#   * ten cold-gas nozzles: four at the corners blowing down (lift, and rolling or pitching it when fired unevenly), two
+#     on the flanks blowing sideways, four in the tail blowing back (to accelerate it fast); none blows up; valves open
+#     in 25 ms; thrust held by a regulator until the tanks run low;
 #     the air they blow leaves the car (it gets lighter);
 #   * the ramp: arcs and a straight in the x-z plane, from the road up to its lip at 168 deg, 5 m wide (RAMP below);
 #     the ground: flat tarmac; air drag and wind.
-# World frame: metres, x along the run-up (the car drives toward +x into the ramp, and leaves the lip going -x), y to the
+# World frame: metres, x along the run-up (the car drives toward +x into the ramp; over the top it goes back -x, above the road), y to the
 # left, z up. Body frame: x forward, y left, z up (roof). Quaternions are (x, y, z, w).
 
 G0 = 9.81
@@ -124,12 +125,14 @@ K_BODY, C_BODY, MU_BODY = 4.0e5, 2.0e4, 0.55
 FANS = [(0.95, 0.0, -0.30), (-0.85, 0.0, -0.30)]
 FAN_G = 2.0                       # both together pull up to 2 g of the full car
 FAN_TAU = 0.25
-# cold-gas nozzles: position (body), direction of the force on the car (body), most thrust (N)
-NOZ_POS = [(1.95, 0.80, -0.05), (1.95, -0.80, -0.05), (-1.85, 0.85, 0.0), (-1.85, -0.85, 0.0),     # lift (blowing down)
-           (1.95, 0.80, 0.05), (1.95, -0.80, 0.05), (-1.85, 0.85, 0.15), (-1.85, -0.85, 0.15),     # couples (blowing up)
-           (2.10, 0.60, -0.10), (2.10, -0.60, -0.10)]                                                 # yaw (blowing sideways)
-NOZ_DIR = [(0, 0, 1)] * 4 + [(0, 0, -1)] * 4 + [(0, -1, 0), (0, 1, 0)]
-NOZ_MAX = [9500.0] * 4 + [4000.0] * 4 + [2500.0] * 2
+# cold-gas nozzles: position (body), direction of the force on the car (body), most thrust (N). As on the stunt car:
+# four under the floor at the corners blowing down (lift; fired on one side only they roll the car), one on each flank
+# blowing sideways, and four in the tail blowing back (to accelerate it fast). None blows upward.
+NOZ_POS = [(1.95, 0.80, -0.20), (1.95, -0.80, -0.20), (-1.85, 0.85, -0.18), (-1.85, -0.85, -0.18),      # down, at the corners
+           (0.25, 0.96, 0.22), (0.25, -0.96, 0.22),                                                    # on the flanks
+           (-2.12, 0.35, 0.10), (-2.12, -0.35, 0.10), (-2.10, 0.72, -0.05), (-2.10, -0.72, -0.05)]   # in the tail
+NOZ_DIR = [(0, 0, 1)] * 4 + [(0, -1, 0), (0, 1, 0)] + [(1, 0, 0)] * 4
+NOZ_MAX = [9500.0] * 4 + [3000.0] * 2 + [4500.0] * 4
 VE = 520.0                        # m/s: the speed the air leaves the nozzles (cold air at sea level)
 REG = 0.12                        # the regulator holds full thrust until the tanks are down to 12 %
 VALVE_TAU = 0.025
@@ -289,6 +292,41 @@ class Track:
         for s_ in self.segs:
             if s_[0] == "arc":
                 r = torch.where((th >= s_[4]) & (th <= s_[5] + 1e-6), torch.full_like(th, s_[3]), r)
+        return r
+
+    def ray(self, o, d, max_r=40.0):
+        """range along rays (o, d: (N, 3), d unit) to the tarmac or the ramp's deck (either face), max_r when nothing is hit:
+        what a laser rangefinder on the car measures"""
+        torch = _t()
+        big = torch.full(o.shape[:-1], float(max_r), dtype=o.dtype, device=o.device)
+        r = big
+        tz = torch.where(d[..., 2] < -1e-6, -o[..., 2] / d[..., 2].clamp(max=-1e-6), big)           # the tarmac, z = 0
+        r = torch.minimum(r, torch.where(tz > 0, tz, big))
+        ox, oz, oy, dx, dz, dy = o[..., 0], o[..., 2], o[..., 1], d[..., 0], d[..., 2], d[..., 1]
+        for s_ in self.segs:
+            if s_[0] == "arc":
+                _, cx, cz, R, a0, a1 = s_
+                ex, ez = ox - cx, oz - cz
+                A = (dx * dx + dz * dz).clamp(min=1e-9)
+                B = 2.0 * (ex * dx + ez * dz)
+                C = ex * ex + ez * ez - R * R
+                disc = B * B - 4 * A * C
+                ok = disc >= 0
+                sq = torch.sqrt(disc.clamp(min=0.0))
+                for t in ((-B - sq) / (2 * A), (-B + sq) / (2 * A)):
+                    px, pz, py = ox + t * dx, oz + t * dz, oy + t * dy
+                    th = torch.atan2(px - cx, -(pz - cz))
+                    hit = ok & (t > 1e-3) & (th >= a0) & (th <= a1) & (py.abs() <= self.w / 2)
+                    r = torch.where(hit & (t < r), t, r)
+            else:
+                _, px0, pz0, L, a = s_
+                nx, nz = -math.sin(a), math.cos(a)
+                den = dx * nx + dz * nz
+                t = ((px0 - ox) * nx + (pz0 - oz) * nz) / torch.where(den.abs() < 1e-9, torch.full_like(den, 1e-9), den)
+                px, pz, py = ox + t * dx, oz + t * dz, oy + t * dy
+                sv = (px - px0) * math.cos(a) + (pz - pz0) * math.sin(a)
+                hit = (t > 1e-3) & (sv >= 0) & (sv <= L) & (py.abs() <= self.w / 2)
+                r = torch.where(hit & (t < r), t, r)
         return r
 
     def query(self, p):
@@ -499,86 +537,77 @@ class Car:
 
 
 def mix(a, air_frac=None):
-    """the flight computer: the controller's four numbers (lift 0..1 from -1..1, roll, pitch, yaw torques -1..1) shared
-    out over the ten nozzles as valve openings 0..1: each corner's net push (down-blowing minus up-blowing) is the lift
-    plus the roll and pitch couples; the nose nozzles turn it"""
+    """the flight computer: the controller's five numbers, each -1..1 (lift; roll and pitch torques; sideways push; push
+    forward) shared out over the ten nozzles as valve openings 0..1. The corner nozzles only blow down: the lift and the
+    roll and pitch couples are made by opening them unevenly (a full roll command fires one side only); the flank
+    nozzles push the car sideways; the tail nozzles push it forward"""
     torch = _t()
     a = a.clamp(-1.0, 1.0)
     lift = (a[:, 0] + 1.0) * 0.5
-    D, U = NOZ_MAX[0], NOZ_MAX[4]
-    K = (D + U) * 0.5
     sy = torch.tensor([1.0, -1.0, 1.0, -1.0], device=a.device, dtype=a.dtype)
     sx = torch.tensor([1.0, 1.0, -1.0, -1.0], device=a.device, dtype=a.dtype)
-    f = lift.unsqueeze(-1) * D + K * (a[:, 1:2] * sy - a[:, 2:3] * sx)
-    down = (f.clamp(min=0.0) / D).clamp(max=1.0)
-    up = ((-f).clamp(min=0.0) / U).clamp(max=1.0)
-    yaw = torch.stack([a[:, 3].clamp(min=0.0), (-a[:, 3]).clamp(min=0.0)], -1)
-    return torch.cat([down, up, yaw], -1)
+    down = (lift.unsqueeze(-1) + a[:, 1:2] * sy - a[:, 2:3] * sx).clamp(0.0, 1.0)
+    side = torch.stack([(-a[:, 3]).clamp(min=0.0), a[:, 3].clamp(min=0.0)], -1)
+    rear = a[:, 4:5].clamp(min=0.0).expand(-1, 4)
+    return torch.cat([down, side, rear], -1)
 
 
 class Driver:
-    """the scripted driver on the ramp (not the learner): run-up at v_in, climb up the ramp easing off to stop th_hold
-    metres before the lip (nearly upside down, held by the fans), hold there for hold_s, then drive off the lip at v_exit.
-    Phases: 0 run-up, 1 climbing, 2 holding, 3 to the lip, 4 off the ramp (the thrusters' controller flies)."""
+    """the scripted driver on the ramp (not the learner): run-up at v_in, climb up the ramp, easing off near the top to
+    v_exit, and drive on over the top and off its end without stopping. The moment the front wheels pass the end of the
+    deck the fans stop: the car is let go with all its momentum, and from then on the thrusters' controller flies it.
+    Phases: 0 run-up, 1 climbing, 4 off the end (falling: the controller flies; 2 and 3 are not used)."""
 
-    def __init__(self, car, v_in, th_hold, hold_s, v_exit):
+    def __init__(self, car, v_in, v_exit):
         torch = _t()
         self.c = car
-        self.v_in, self.th_hold, self.hold_s, self.v_exit = v_in, th_hold, hold_s, v_exit
+        self.v_in, self.v_exit = v_in, v_exit
         self.phase = torch.zeros(car.n, dtype=torch.long, device=car.dev)
-        self.hold_t = torch.zeros(car.n, device=car.dev, dtype=car.dt_)
         self.off_t = torch.full((car.n,), -1.0, device=car.dev, dtype=car.dt_)
+        self.released = torch.zeros(car.n, dtype=torch.bool, device=car.dev)
 
     def control(self, dt):
         torch = _t()
         c, tr = self.c, self.c.track
         R = c.R()
-        xb, yb = R[:, :, 0], R[:, :, 1]
+        xb, yb, zb = R[:, :, 0], R[:, :, 1], R[:, :, 2]
         v_long = (c.vel * xb).sum(-1)
         th = tr.angle(c.pos)
-        s = tr.along(c.pos)
         L = tr.length()
         on_ramp = (c.pos[:, 0] > tr.x0 - 0.3) & (c.pos[:, 2] > 0.6)
         ph = self.phase
         ph = torch.where((ph == 0) & on_ramp & (th > 0.05), torch.ones_like(ph), ph)
-        brake_dist = (L - self.th_hold) - s
-        v_climb = torch.minimum(self.v_in, torch.sqrt((2.0 * 2.5 * brake_dist).clamp(min=0.0)))
-        stop = (ph == 1) & ((brake_dist <= 0.02) | ((v_long < 0.25) & (brake_dist < 1.2)))
-        ph = torch.where(stop, torch.full_like(ph, 2), ph)
-        self.hold_t = torch.where(ph == 2, self.hold_t + dt, self.hold_t)
-        ph = torch.where((ph == 2) & (self.hold_t >= self.hold_s), torch.full_like(ph, 3), ph)
-        # the hand-over: the front axle is past the lip (the nose is in the air); the script keeps driving and the fans
-        # keep the rear on the lip until the rear axle is past it too
-        front = c.pos + R[:, :, 0] * 1.33 - R[:, :, 2] * 0.4
-        rear = c.pos - R[:, :, 0] * 1.33 - R[:, :, 2] * 0.4
-        new_off = (ph == 3) & ((tr.along(front) > L) | ((s > L - 3.0) & ~c.wheel_on.any(-1)))
-        self.off_t = torch.where(new_off, c.t, self.off_t)
-        ph = torch.where(new_off, torch.full_like(ph, 4), ph)
-        gone = (ph == 4) & ((tr.along(rear) > L + 0.01) | ~c.wheel_on.any(-1) | (c.t - self.off_t > 1.5))
-        self.rear_off = gone | getattr(self, "rear_off", torch.zeros_like(gone))
-        c.flying = self.rear_off & (c.t - self.off_t > 0.25)
+        # the front axle's place along the deck: off the end when it is past its length
+        front = c.pos + xb * WHEELS[0][0] - zb * 0.4
+        s_front = tr.along(front)
+        to_go = (L - s_front).clamp(min=0.0)
+        v_t = torch.minimum(self.v_in, torch.sqrt(self.v_exit * self.v_exit + 2.0 * 2.0 * to_go))   # easing off to v_exit at the end
+        let_go = (ph == 1) & (s_front > L)
+        self.off_t = torch.where(let_go, c.t, self.off_t)
+        ph = torch.where(let_go, torch.full_like(ph, 4), ph)
+        self.released = self.released | (ph == 4)
+        # flying: 0.8 s after letting go (the rear wheels roll off the end meanwhile); touching the deck after that is
+        # hitting the ramp
+        c.flying = self.released & (c.t - self.off_t > 0.8)
         self.phase = ph
-        v_t = torch.where(ph == 0, self.v_in, torch.where(ph == 1, v_climb, torch.where(ph == 2, torch.zeros_like(v_climb), self.v_exit)))
         m = c.mass()
-        gain = torch.where(ph >= 3, torch.full_like(v_long, 8.0), torch.full_like(v_long, 2.5))
-        f = m * (gain * (v_t - v_long) + G0 * xb[:, 2])
-        f = torch.where(ph >= 3, f.clamp(min=0.0), f)
-        free = self.rear_off.unsqueeze(-1)
-        c.drive = torch.where(self.rear_off, torch.zeros_like(f), f.clamp(-DRIVE_MAX, DRIVE_MAX))
+        f = m * (5.0 * (v_t - v_long) + G0 * xb[:, 2])
+        free = self.released.unsqueeze(-1)
+        c.drive = torch.where(self.released, torch.zeros_like(f), f.clamp(-DRIVE_MAX, DRIVE_MAX))
         c.brake = torch.zeros_like(f)
         # the fans pull only as hard as needed to keep the tyres pressed with about 1.25 g (gravity and the turn do the
-        # rest): fully on upside down, lightly on the flat, so the springs are not squashed into the bump stops
+        # rest): fully on upside down, lightly on the flat, so the springs are not squashed into the bump stops; off the
+        # moment it goes over the end
         _, nrm, kind_ = tr.query(c.pos)
         r_loc = tr.radius(th)
         turn = torch.where(kind_ == 1, v_long * v_long / r_loc, torch.zeros_like(v_long))
         need = ((1.25 * G0 - turn - G0 * nrm[:, 2]) / (FAN_G * G0)).clamp(0.0, 1.0)
-        need = torch.where((ph >= 2) & (ph <= 4), torch.ones_like(need), need)      # held upside down and off the lip: all they have
         c.fan_cmd = torch.where(free, torch.zeros_like(c.fan_cmd), need.unsqueeze(-1).expand(-1, 2))
         # stay in the middle of the ramp
         vy_des = -0.8 * c.pos[:, 1]
         want = (vy_des / v_long.abs().clamp(min=2.0)).clamp(-0.1, 0.1)
         st = 3.0 * (want - xb[:, 1]) * torch.sign(yb[:, 1] + 1e-6) * 2.66 / v_long.abs().clamp(min=2.0)
-        c.steer = torch.where(self.rear_off, torch.zeros_like(st), st.clamp(-0.15, 0.15))
+        c.steer = torch.where(self.released, torch.zeros_like(st), st.clamp(-0.15, 0.15))
         return ph
 
 
@@ -595,85 +624,151 @@ def place_on_ground(car, x, y=0.0, yaw=0.0, v=0.0):
     car.w = torch.zeros(n, 3, **f)
 
 
-# ── learning to fly the car off the lip and land it: what the controller sees and does, the lessons, PPO ────────
-OBS = 26
-ACT = 4
+# ── learning to land the car when it goes over the end of the ramp: what the controller senses and does, the lessons, PPO ─────
 CTRL_DT, SUBSTEPS = 0.02, 5         # the controller decides 50 times a second; the physics steps every 4 ms
 GAMMA = 0.995
-T_LIMIT = 9.0                       # seconds from the hand-over
+T_LIMIT = 9.0                       # seconds from letting go
 SETTLE = 1.0                        # seconds on the wheels before a landing counts
-LAND_X = -25.0                      # the middle of the landing box painted on the tarmac (x), y = 0
+ACT = 5
 # A reverse curriculum: easy starts first, the real one last. A lesson opens when half the attempts of the one before land.
-STAGES = [("upright", "a short drop, nearly level"), ("side", "on its side or nose down, 4-10 m up"),
-          ("inverted", "upside down, 10-20 m up"), ("lip", "off the lip of the ramp, as in the stunt")]
+STAGES = [("upright", "a short drop, nearly level"), ("side", "on its side or nose down, 6-12 m up"),
+          ("inverted", "upside down and moving, 12-20 m up"), ("top", "over the end of the ramp, as in the stunt")]
 OUTCOMES = ((1, "landed"), (2, "hard landing"), (3, "on its side or roof"), (4, "hit the ramp"), (5, "time"))
 
 
-def observe(car, drv, prev_a):
-    import torch
-    R = car.R()
-    xb, zb = R[:, :, 0], R[:, :, 2]
-    tyre_b = car.Wb.clone()
-    tyre_b[:, 2] -= REST
-    low = car.world(R, tyre_b)[:, :, 2].min(-1).values
-    lip_x, lip_z = car.track.lip()
-    since = (car.t - drv.off_t).clamp(min=0.0)
-    return torch.cat([
-        xb, zb, car.w * 0.5, car.vel / 8.0,
-        (car.pos[:, 2:3] / 10.0), (low.unsqueeze(-1) / 5.0),
-        torch.stack([(car.pos[:, 0] - LAND_X) / 15.0, car.pos[:, 1] / 15.0], -1),
-        torch.stack([(car.pos[:, 0] - lip_x) / 10.0, (car.pos[:, 2] - lip_z) / 10.0], -1),
-        (car.air / AIR0).unsqueeze(-1),
-        car.wheel_on.float().mean(-1, keepdim=True),
-        (~drv.rear_off).float().unsqueeze(-1),
-        (since / 4.0).unsqueeze(-1),
-        prev_a,
-    ], -1)
+def drop_x(track=None):
+    """where the car's centre is when it goes over the end (its front wheels at the end of the deck): above the tarmac,
+    in front of the ramp's foot"""
+    tr = track or Track()
+    lx, _ = tr.lip()
+    return lx - WHEELS[0][0] * math.cos(tr.end)
+
+
+LAND_X = round(drop_x(), 2)         # the reference spot on the tarmac (x), y = 0: under where it goes over the end
+
+
+# The controller sees the car only through its sensors, each with its own noise:
+#   * an IMU (inertial unit): the gyro (turn rates, with a bias that differs from car to car) and the accelerometer (the
+#     push it feels: thrust, drag, the tyres, not gravity), and the attitude its filter works out (the car's forward and
+#     up directions);
+#   * two laser rangefinders, one in the floor looking down through it and one in the roof looking up: the distance to
+#     whatever is there (tarmac or ramp), up to 40 m: whichever way up the car is, one of them sees the ground;
+#   * an RTK GNSS receiver (satellite positioning with a base station): position and velocity, 10 times a second.
+# Plus what the car knows of itself: the air left, whether its tyres are loaded, whether it has let go and since when.
+SENSORS = {"imu": [0.0, 0.0, -0.05], "laser_floor": [0.30, 0.0, -0.31], "laser_roof": [0.10, 0.0, 0.60], "gnss": [-0.40, 0.0, 0.62]}
+LASER_MAX = 40.0
+OBS = 3 + 6 + 3 + 2 + 3 + 3 + 4 + ACT
+
+
+class Sensors:
+    """the sensors of N cars: their noise and what they hold between readings"""
+
+    def __init__(self, n, dev, dtype, gen=None):
+        import torch
+        self.n, self.dev, self.dt_, self.gen = n, dev, dtype, gen
+        z = lambda *s_: torch.zeros(n, *s_, device=dev, dtype=dtype)   # noqa: E731
+        self.bias, self.gpos, self.gvel, self.age, self.vprev = z(3), z(3), z(3), z().fill_(1e9), z(3)
+        self.fl = torch.tensor(SENSORS["laser_floor"], device=dev, dtype=dtype)
+        self.rf = torch.tensor(SENSORS["laser_roof"], device=dev, dtype=dtype)
+
+    def _n(self, *shape):
+        import torch
+        return torch.randn(*shape, device=self.dev, dtype=self.dt_, generator=self.gen)
+
+    def reset(self, car, idx):
+        if idx.numel() == 0:
+            return
+        self.bias[idx] = 0.01 * self._n(idx.numel(), 3)
+        self.age[idx] = 1e9
+        self.vprev[idx] = car.vel[idx]
+
+    def read(self, car, drv, prev_a, dt):
+        """the observation: sensor readings, scaled"""
+        import torch
+        n = car.n
+        R = car.R()
+        xb, zb = R[:, :, 0], R[:, :, 2]
+        gyro = car.w + self.bias + 0.02 * self._n(n, 3)
+        att = torch.cat([xb, zb], -1) + 0.006 * self._n(n, 6)
+        acc_w = (car.vel - self.vprev) / dt
+        self.vprev = car.vel.clone()
+        acc_w = acc_w + torch.tensor([0.0, 0.0, G0], device=self.dev, dtype=self.dt_)
+        accel = torch.einsum("nji,nj->ni", R, acc_w) + 0.15 * self._n(n, 3)
+        # the lasers: from the floor straight down through it (-z of the car), from the roof straight up (+z)
+        o1 = car.pos + torch.einsum("nij,j->ni", R, self.fl)
+        o2 = car.pos + torch.einsum("nij,j->ni", R, self.rf)
+        r1 = car.track.ray(o1, -zb, LASER_MAX)
+        r2 = car.track.ray(o2, zb, LASER_MAX)
+        r1 = (r1 * (1.0 + 0.005 * self._n(n)) + 0.02 * self._n(n)).clamp(0.0, LASER_MAX)
+        r2 = (r2 * (1.0 + 0.005 * self._n(n)) + 0.02 * self._n(n)).clamp(0.0, LASER_MAX)
+        # GNSS: a fresh fix every 0.1 s
+        self.age = self.age + dt
+        fresh = self.age >= 0.1 - 1e-6
+        if bool(fresh.any()):
+            gp = car.pos + 0.03 * self._n(n, 3)
+            gv = car.vel + 0.05 * self._n(n, 3)
+            self.gpos = torch.where(fresh.unsqueeze(-1), gp, self.gpos)
+            self.gvel = torch.where(fresh.unsqueeze(-1), gv, self.gvel)
+            self.age = torch.where(fresh, torch.zeros_like(self.age), self.age)
+        since = (car.t - drv.off_t).clamp(min=0.0)
+        rel = torch.stack([(self.gpos[:, 0] - LAND_X) / 10.0, self.gpos[:, 1] / 10.0, self.gpos[:, 2] / 10.0], -1)
+        return torch.cat([
+            gyro * 0.5, att, accel / 20.0,
+            torch.stack([r1 / 20.0, r2 / 20.0], -1),
+            rel, self.gvel / 8.0,
+            (car.air / AIR0).unsqueeze(-1),
+            car.wheel_on.float().mean(-1, keepdim=True),
+            (~drv.released).float().unsqueeze(-1),
+            (since / 4.0).unsqueeze(-1),
+            prev_a,
+        ], -1)
 
 
 def potential(car):
     """how close to a good landing a state is (higher is better): upright, falling no faster than the height allows,
-    not sliding sideways near the ground, not spinning"""
+    not sliding sideways near the ground, not spinning, the nose kept level (it turns over by rolling, sideways, not by
+    pitching end over end), away from the ramp"""
     import torch
     R = car.R()
-    zb, yb = R[:, :, 2], R[:, :, 1]
+    zb, yb, xb = R[:, :, 2], R[:, :, 1], R[:, :, 0]
     h = (car.pos[:, 2] - RIDE).clamp(min=0.0)
     tilt = torch.acos(zb[:, 2].clamp(-1.0, 1.0)) / math.pi
     low = (1.0 - h / 6.0).clamp(0.0, 1.0)
-    vz_t = -(0.5 + torch.sqrt(2.0 * 4.5 * h))
+    vz_t = -(0.8 + torch.sqrt(2.0 * 2.5 * h))        # the fall it may have at height h: braking at 2.5 m/s2 to touch down at 0.8 m/s
     fast = (vz_t - car.vel[:, 2]).clamp(min=0.0)
     slow = (car.vel[:, 2] - vz_t).clamp(min=0.0)
     side = (car.vel * yb).sum(-1).abs()
-    return -(1.5 * tilt + 3.0 * tilt * low + 0.2 * car.w.norm(dim=-1) + 1.5 * torch.log1p(fast / 2.0) + 0.4 * torch.log1p(slow / 2.0)
-             + 0.5 * low * torch.log1p(side / 2.0))
+    near_ramp = (car.pos[:, 0] - (car.track.x0 - 1.0)).clamp(min=0.0)
+    return -(1.5 * tilt + 3.0 * tilt * low + 0.2 * car.w.norm(dim=-1) + (2.0 + 4.0 * low) * torch.log1p(fast / 1.5) + 0.4 * torch.log1p(slow / 2.0)
+             + 0.5 * low * torch.log1p(side / 2.0) + 1.2 * xb[:, 2].abs() + 0.8 * near_ramp)
 
 
 def free_start(car, drv, idx, kind, gen):
-    """lessons 1-3: the car in the air somewhere over the run-up, in the attitude the lesson asks for"""
+    """lessons 1-3: the car in the air in front of the ramp, in the attitude the lesson asks for"""
     import torch
     k = idx.numel()
     dev, dt = car.dev, car.dt_
     U = lambda a, b: a + (b - a) * torch.rand(k, device=dev, dtype=dt, generator=gen)   # noqa: E731
     sgn = lambda: torch.where(torch.rand(k, device=dev, generator=gen) < 0.5, -1.0, 1.0).to(dt)   # noqa: E731
     if kind == "upright":
-        h, x = U(1.5, 4.0), U(-42.0, -14.0)
-        roll, pitch = U(-0.4, 0.4), U(-0.4, 0.4)
-        vx, vz, wmax = U(-5.0, 0.0), U(-3.0, 0.5), 0.3
+        h, x = U(1.5, 4.0), LAND_X + U(-14.0, 1.0)
+        roll, pitch = U(-0.4, 0.4), U(-0.3, 0.3)
+        vx, vz, wmax = U(-6.0, 0.0), U(-3.0, 0.5), 0.3
     elif kind == "side":
-        h, x = U(4.0, 10.0), U(-40.0, -12.0)
-        side = torch.rand(k, device=dev, generator=gen) < 0.6
-        roll = torch.where(side, sgn() * U(0.5, 2.4), U(-0.3, 0.3))
-        pitch = torch.where(side, U(-0.3, 0.3), sgn() * U(0.5, 2.0))
-        vx, vz, wmax = U(-6.0, 0.0), U(-4.0, 1.0), 0.6
+        h, x = U(6.0, 12.0), LAND_X + U(-12.0, 0.0)
+        side = torch.rand(k, device=dev, generator=gen) < 0.75
+        roll = torch.where(side, sgn() * U(0.4, 1.8), U(-0.3, 0.3))
+        pitch = torch.where(side, U(-0.25, 0.25), sgn() * U(0.3, 0.8))
+        vx, vz, wmax = U(-6.0, 0.0), U(-3.0, 0.5), 0.5
     else:
-        h, x = U(10.0, 19.0), U(-22.0, -7.0)
-        roll = math.pi + U(-0.6, 0.6)
-        pitch = U(-0.5, 0.5)
-        vx, vz, wmax = U(-8.0, -1.0), U(-3.0, 1.5), 1.2
-    yaw = math.pi + U(-0.15, 0.15)             # heading -x, as when it leaves the lip
-    car.pos[idx] = torch.stack([x, U(-1.5, 1.5), h + RIDE], -1)
+        h, x = U(12.0, 19.6), LAND_X + U(-5.0, 1.0)
+        roll = math.pi + U(-0.5, 0.5)
+        pitch = U(-0.4, 0.4)
+        vx, vz, wmax = U(-9.0, -3.0), U(-3.0, 0.5), 0.8
+    yaw = math.pi + U(-0.1, 0.1)               # heading -x and moving that way, as when it goes over the end
+    car.pos[idx] = torch.stack([x, U(-1.0, 1.0), h + RIDE], -1)
     car.q[idx] = q_euler(roll, pitch, yaw)
-    car.vel[idx] = torch.stack([vx, U(-0.8, 0.8), vz], -1)
+    car.vel[idx] = torch.stack([vx, U(-0.6, 0.6), vz], -1)
     car.w[idx] = torch.stack([U(-wmax, wmax), U(-wmax, wmax), U(-0.2, 0.2)], -1)
     car.air[idx] = U(225.0, 250.0)
     car.air0[idx] = AIR0
@@ -687,18 +782,17 @@ def free_start(car, drv, idx, kind, gen):
     car.wind[idx] = torch.stack([U(-5.0, 5.0), U(-5.0, 5.0), torch.zeros(k, device=dev, dtype=dt)], -1)
     drv.phase[idx] = 4
     drv.off_t[idx] = car.t[idx]
-    drv.rear_off[idx] = True
+    drv.released[idx] = True
     car.flying[idx] = True
 
 
-DRV_STATE = ["phase", "hold_t", "off_t", "rear_off", "v_in", "th_hold", "hold_s", "v_exit"]
+DRV_STATE = ["phase", "off_t", "released", "v_in", "v_exit"]
 CAR_EXTRA = ["drive", "brake", "steer", "fan_cmd", "thr_cmd", "flying", "_wspin"]
 
 
-def lip_pool(size, dev, dtype, gen, log=None):
-    """the real starts: cars driven by the script up the ramp, held nearly upside down, then off the lip; each start is
-    the moment its front axle leaves the lip, with everything the script was doing then (it keeps driving the rear wheels
-    and the fans hold the rear on the lip a moment longer)"""
+def top_pool(size, dev, dtype, gen, log=None):
+    """the real starts: cars driven by the script up the ramp and over its top; each start is the moment the front wheels
+    pass the end of the deck and the fans stop, with everything as it was then (its speed, the rear still on the deck)"""
     import torch
     car = Car(size, dev, dtype)
     U = lambda a, b: a + (b - a) * torch.rand(size, device=car.dev, dtype=car.dt_, generator=gen)   # noqa: E731
@@ -711,12 +805,11 @@ def lip_pool(size, dev, dtype, gen, log=None):
     car.noz_k = 0.92 + 0.13 * torch.rand(size, 10, device=car.dev, dtype=car.dt_, generator=gen)
     car.wind = torch.stack([U(-6.0, 6.0), U(-6.0, 6.0), torch.zeros_like(car.t)], -1)
     car.flying = torch.zeros(size, dtype=torch.bool, device=car.dev)
-    drv = Driver(car, car.vel[:, 0].clone(), U(5.0, 9.0), U(0.2, 0.6), U(4.0, 10.0))
-    drv.rear_off = torch.zeros(size, dtype=torch.bool, device=car.dev)
+    drv = Driver(car, car.vel[:, 0].clone(), U(4.0, 9.0))
     snap, got = {}, torch.zeros(size, dtype=torch.bool, device=car.dev)
     dt = 0.004
     keys = Car.STATE + CAR_EXTRA
-    for _ in range(int(16.0 / dt)):
+    for _ in range(int(18.0 / dt)):
         ph = drv.control(dt)
         car.step(dt)
         new = (ph == 4) & ~got
@@ -737,10 +830,10 @@ def lip_pool(size, dev, dtype, gen, log=None):
     keep = (got & (snap["touched_body"] < 0.01)).nonzero(as_tuple=False).flatten()
     snap = {k_: v[keep] for k_, v in snap.items()}
     if log:
-        V = snap["vel"].norm(dim=-1)
-        log("off the lip: %d starts, %.1f to %.1f m up, %.1f to %.1f m/s, upside down by %.0f to %.0f deg" % (
-            keep.numel(), float(snap["pos"][:, 2].min()), float(snap["pos"][:, 2].max()), float(V.min()), float(V.max()),
-            math.degrees(float(torch.acos(qmat(snap["q"])[:, 2, 2].clamp(-1, 1)).min())), math.degrees(float(torch.acos(qmat(snap["q"])[:, 2, 2].clamp(-1, 1)).max()))))
+        tilt = torch.rad2deg(torch.acos(qmat(snap["q"])[:, 2, 2].clamp(-1, 1)))
+        log("over the end: %d starts, %.1f to %.1f m up, x %.1f to %.1f m, upside down by %.0f to %.0f deg" % (
+            keep.numel(), float(snap["pos"][:, 2].min()), float(snap["pos"][:, 2].max()), float(snap["pos"][:, 0].min()), float(snap["pos"][:, 0].max()),
+            float(tilt.min()), float(tilt.max())))
     return snap
 
 
@@ -753,8 +846,9 @@ class StuntEnv:
         self.car = Car(n, self.dev, self.dtype)
         self.car.flying = torch.zeros(n, dtype=torch.bool, device=self.dev)
         f = dict(device=self.dev, dtype=self.dtype)
-        self.drv = Driver(self.car, torch.zeros(n, **f), torch.zeros(n, **f), torch.zeros(n, **f), torch.zeros(n, **f))
-        self.drv.rear_off = torch.ones(n, dtype=torch.bool, device=self.dev)
+        self.drv = Driver(self.car, torch.zeros(n, **f), torch.zeros(n, **f))
+        self.sens = Sensors(n, self.dev, self.dtype, self.gen)
+        self.drv.released = torch.ones(n, dtype=torch.bool, device=self.dev)
         self.pools = {}
         self.mix = [1.0, 0.0, 0.0, 0.0]
         self.stage_of = torch.zeros(n, dtype=torch.long, device=self.dev)
@@ -767,8 +861,8 @@ class StuntEnv:
         self.air_used = torch.zeros(n, **f)
 
     def make_pool(self, stage, size, log=None):
-        if STAGES[stage][0] == "lip" and stage not in self.pools:
-            self.pools[stage] = lip_pool(size, self.dev, self.dtype, self.gen, log)
+        if STAGES[stage][0] == "top" and stage not in self.pools:
+            self.pools[stage] = top_pool(size, self.dev, self.dtype, self.gen, log)
 
     def reset(self, idx):
         import torch
@@ -784,7 +878,7 @@ class StuntEnv:
             if sel.numel() == 0:
                 continue
             self.stage_of[sel] = s
-            if STAGES[s][0] != "lip":
+            if STAGES[s][0] != "top":
                 free_start(c, d, sel, STAGES[s][0], self.gen)
                 continue
             P = self.pools[s]
@@ -797,6 +891,7 @@ class StuntEnv:
         c.hard[idx] = 0.0
         c.touched_body[idx] = 0.0
         c.hit_ramp[idx] = False
+        self.sens.reset(c, idx)
         self.ret[idx] = 0.0
         self.prev[idx] = 0.0
         self.t_td[idx] = -1.0
@@ -805,7 +900,7 @@ class StuntEnv:
     def start(self):
         import torch
         self.reset(torch.arange(self.n, device=self.dev))
-        return observe(self.car, self.drv, self.prev)
+        return self.sens.read(self.car, self.drv, self.prev, CTRL_DT)
 
     def step(self, a):
         import torch
@@ -815,13 +910,15 @@ class StuntEnv:
         a = a.clamp(-1.0, 1.0)
         c.thr_cmd = mix(a)
         for _ in range(SUBSTEPS):
-            if not bool(d.rear_off.all()):
+            if not bool(d.released.all()):
                 ph = d.phase.clone()
                 d.control(CTRL_DT / SUBSTEPS)
                 d.phase = torch.maximum(ph, d.phase)
+            c.brake = torch.where(self.t_td >= 0, torch.full_like(c.brake, 16000.0), torch.zeros_like(c.brake))   # down: brakes on
             c.step(CTRL_DT / SUBSTEPS)
+            c.flying = d.released & (c.t - d.off_t > 0.8) & (self.t_td < 0)     # down on its wheels: rolling onto the ramp's foot is no crash
             gd = (c.wheel_on & (c.wheel_kind == 0)).any(-1) | (c.touched_body > 0)
-            new = gd & (self.t_td < 0) & d.rear_off
+            new = gd & (self.t_td < 0) & d.released
             if bool(new.any()):
                 self.t_td = torch.where(new, c.t, self.t_td)
                 self.vz_td = torch.where(new, c.vel[:, 2], self.vz_td)
@@ -846,7 +943,7 @@ class StuntEnv:
         r = (GAMMA * phi1 * (~end).to(phi1.dtype) - phi0) - 0.08 * used - 0.05 * c.vel[:, 2].clamp(min=0.0)
         bonus = torch.zeros_like(r)
         bonus = torch.where(why == 1, 100.0 + 25.0 * (1.0 + self.vz_td / 3.0).clamp(0.0, 1.0) + 10.0 * (1.0 - self.tilt_td / math.radians(15.0)).clamp(0.0, 1.0), bonus)
-        bonus = torch.where(why == 2, -30.0 - 4.0 * self.vz_td.abs().clamp(max=20.0), bonus)
+        bonus = torch.where(why == 2, -30.0 - 8.0 * (self.vz_td.abs() - 3.0).clamp(min=0.0, max=15.0), bonus)
         bonus = torch.where(why == 3, torch.full_like(bonus, -70.0), bonus)
         bonus = torch.where(why == 4, torch.full_like(bonus, -80.0), bonus)
         bonus = torch.where(why == 5, torch.full_like(bonus, -60.0), bonus)
@@ -858,7 +955,7 @@ class StuntEnv:
         self.prev = a
         idx = end.nonzero(as_tuple=False).flatten()
         self.reset(idx)
-        return observe(c, d, self.prev), r, end, info
+        return self.sens.read(c, d, self.prev, CTRL_DT), r, end, info
 
 
 def make_nets(torch, obs=None, act=None, hidden=256):
@@ -870,7 +967,7 @@ def make_nets(torch, obs=None, act=None, hidden=256):
             super().__init__()
             self.pi = nn.Sequential(nn.Linear(obs, hidden), nn.Tanh(), nn.Linear(hidden, hidden), nn.Tanh(), nn.Linear(hidden, act))
             self.v = nn.Sequential(nn.Linear(obs, hidden), nn.Tanh(), nn.Linear(hidden, hidden), nn.Tanh(), nn.Linear(hidden, 1))
-            self.log_std = nn.Parameter(torch.full((act,), -0.5))
+            self.log_std = nn.Parameter(torch.full((act,), -1.0))
             nn.init.orthogonal_(self.pi[-1].weight, 0.01)
             nn.init.zeros_(self.pi[-1].bias)
 
@@ -951,7 +1048,7 @@ class PPO:
                 vc = val[idx] + (v - val[idx]).clamp(-1.0, 1.0)
                 vl = torch.max((v - ret[idx]) ** 2, (vc - ret[idx]) ** 2).mean()
                 ent = (ls + 1.4189385).sum()
-                loss = pl + 0.5 * vl - 0.003 * ent
+                loss = pl + 0.5 * vl - 0.001 * ent
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
@@ -969,14 +1066,28 @@ class PPO:
 
 # ── what the 3D view gets: frames of the car (esasim.car/1) ──────────────────────────────────────────────
 FIELDS = ["t", "x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "steer", "s0", "s1", "s2", "s3", "c0", "c1", "c2", "c3",
-          "fan0", "fan1", "n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "air", "g", "phase", "drive"]
+          "fan0", "fan1", "n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "air", "g", "phase", "drive",
+          "hit", "fspin", "las0", "las1"]
+# hit: the fastest the body has struck anything so far (m/s; above 0 it crashed); fspin: how fast the fans spin (0-1);
+# las0, las1: what the floor and roof laser rangefinders read (m)
 
 
 def track_info(track):
     return {"R": track.R, "end_deg": round(math.degrees(track.end), 2), "width": track.w, "x0": track.x0,
             "profile": track.profile(),
-            "land": [LAND_X, 0.0], "box": [9.0, 4.0], "nozzles": NOZ_POS, "nozzle_dirs": NOZ_DIR, "wheels": WHEELS, "rest": REST,
-            "wheel_r": WHEEL_R, "car": [LENGTH, WIDTH, HEIGHT], "ride": RIDE, "comp0": round((DRY + AIR0) * G0 / 4.0 / K_SUS, 3)}
+            "land": [round(LAND_X - 20.0, 1), 0.0], "box": [9.0, 4.0], "nozzles": NOZ_POS, "nozzle_dirs": NOZ_DIR, "wheels": WHEELS, "rest": REST,   # land: about where it comes down, 20 m on from the end
+            "wheel_r": WHEEL_R, "car": [LENGTH, WIDTH, HEIGHT], "ride": RIDE, "comp0": round((DRY + AIR0) * G0 / 4.0 / K_SUS, 3),
+            "sensors": SENSORS, "laser_max": LASER_MAX, "body": BODY}
+
+
+def lasers(car, i):
+    """what car i's two laser rangefinders read now (no noise: for the view)"""
+    import torch
+    R = car.R()[i:i + 1]
+    zb = R[:, :, 2]
+    o1 = car.pos[i:i + 1] + torch.einsum("nij,j->ni", R, torch.tensor(SENSORS["laser_floor"], dtype=car.dt_, device=car.dev))
+    o2 = car.pos[i:i + 1] + torch.einsum("nij,j->ni", R, torch.tensor(SENSORS["laser_roof"], dtype=car.dt_, device=car.dev))
+    return float(car.track.ray(o1, -zb, LASER_MAX)[0]), float(car.track.ray(o2, zb, LASER_MAX)[0])
 
 
 def frame_of(car, drv, i, t0=0.0):
@@ -989,7 +1100,8 @@ def frame_of(car, drv, i, t0=0.0):
             + [r3(x) for x in car.spin[i].tolist()] + [r3(x) for x in car.comp[i].tolist()]
             + [r3(car.fan[i, 0] * car.fan_seal[i, 0]), r3(car.fan[i, 1] * car.fan_seal[i, 1])]
             + [round(float(th[k]) / NOZ_MAX[k], 3) for k in range(10)]
-            + [round(float(car.air[i]), 1), r2(car.g_load[i]), int(drv.phase[i]), round(float(car.drive[i]) / DRIVE_MAX, 3)])
+            + [round(float(car.air[i]), 1), r2(car.g_load[i]), int(drv.phase[i]), round(float(car.drive[i]) / DRIVE_MAX, 3)]
+            + [r2(car.touched_body[i]), r3(car.fan[i].mean())] + [r2(x) for x in lasers(car, i)])
 
 
 def chunks(rows, size=150):
@@ -1017,7 +1129,7 @@ def learn_run(ctx):
     seed = int(p.get("seed") or 1)
     torch.manual_seed(seed)
     torch.set_grad_enabled(True)
-    ctx.log("Learning the landing on %s with %d cars at once, for up to %.0f minutes (or until %.0f%% of the attempts off the lip land)." % (label, n, minutes, target * 100))
+    ctx.log("Learning the landing on %s with %d cars at once, for up to %.0f minutes (or until %.0f%% of the attempts over the end of the ramp land)." % (label, n, minutes, target * 100))
     algo = PPO(torch, dev, n)
     start_stage = 0
     found = []
@@ -1025,7 +1137,8 @@ def learn_run(ctx):
         if str(f.name).endswith(".pt"):
             try:
                 st_ = torch.load(f.path, map_location="cpu", weights_only=False)
-                if st_.get("format") != "esasim.stunt-policy/1":
+                if st_.get("format") != "esasim.stunt-policy/2":
+                    ctx.log("Skipped %s: made for the earlier stunt (off the lip, without sensors); this one learns from scratch." % f.name)
                     continue
                 m_ = re.search(r"(\d{8}_\d{4})", str(f.name))
                 found.append((int(st_.get("stage", 0)), float(st_.get("landed_full") or 0), m_.group(1) if m_ else "", os.path.getmtime(f.path), f, st_))
@@ -1039,7 +1152,7 @@ def learn_run(ctx):
         start_stage = int(st.get("stage", 0))
         seed += int(time.time()) % 100000
         torch.manual_seed(seed)
-        ctx.log("Continuing from %s: it had reached lesson %d of %d after %.0f minutes, %.0f%% of the attempts off the lip landing." % (
+        ctx.log("Continuing from %s: it had reached lesson %d of %d after %.0f minutes, %.0f%% of the attempts over the end of the ramp landing." % (
             f.name, start_stage + 1, len(STAGES), float(st.get("minutes") or 0), 100 * float(st.get("landed_full") or 0)))
     elif found:
         ctx.log("Starting from scratch (asked): the %d policies so far are left as they are." % len(found))
@@ -1048,12 +1161,12 @@ def learn_run(ctx):
     stage = start_stage
 
     def open_lesson(s):
-        if STAGES[s][0] == "lip":
-            ctx.progress(1, "driving the cars up the ramp to make the starts")
+        if STAGES[s][0] == "top":
+            ctx.progress(1, "driving the cars up the ramp and over its end to make the starts")
             t_ = time.time()
             with torch.no_grad():
                 env.make_pool(s, pool, log=ctx.log)
-            ctx.log("The starts off the lip took %.0f s to drive." % (time.time() - t_))
+            ctx.log("The starts over the end took %.0f s to drive." % (time.time() - t_))
         env.mix = [0.0] * len(STAGES)
         if s == 0:
             env.mix[0] = 1.0
@@ -1086,7 +1199,7 @@ def learn_run(ctx):
     def save(note):
         st = algo.state()
         st.update({"stage": stage, "landed_full": full_rate(), "obs": OBS, "act": ACT, "note": note, "cars": n, "device": label,
-                   "minutes": (time.time() - t_start) / 60.0, "format": "esasim.stunt-policy/1", "ctrl_dt": CTRL_DT})
+                   "minutes": (time.time() - t_start) / 60.0, "format": "esasim.stunt-policy/2", "ctrl_dt": CTRL_DT})
         torch.save(st, out_path)
 
     def send_replay(frames, res):
@@ -1197,9 +1310,9 @@ def learn_run(ctx):
     shutil.copyfile(out_path, ctx.output("policy", name))
     ctx.log("Policy written: %s" % name)
     if stage < len(STAGES) - 1:
-        ctx.log("Not every lesson done yet (lesson %d of %d): only the last lesson counts attempts off the lip, so 0%% there is expected. "
+        ctx.log("Not every lesson done yet (lesson %d of %d): only the last lesson counts attempts over the end, so 0%% there is expected. "
                 "Run this flow again: it goes on from here." % (stage + 1, len(STAGES)))
-    ctx.log("Done (%s): %d attempts in %.1f minutes; lesson %d of %d; %.0f%% of the attempts off the lip land." % (
+    ctx.log("Done (%s): %d attempts in %.1f minutes; lesson %d of %d; %.0f%% of the attempts over the end of the ramp land." % (
         {"time": "time is up", "asked": "finished on request", "target": "target reached"}[stop_reason], episodes, (time.time() - t_start) / 60,
         stage + 1, len(STAGES), 100 * full_rate()))
     return {"lesson": stage + 1, "landed_full": round(full_rate(), 3), "attempts": episodes, "minutes": round((time.time() - t_start) / 60, 1)}
@@ -1221,12 +1334,13 @@ def load_policy(path):
     return act, st
 
 
-PHASES = {0: "Run-up", 1: "Up the ramp", 2: "Upside down on the fans", 3: "To the lip", 4: "Off the lip"}
+PHASES = {0: "Run-up", 1: "Up the ramp", 2: "", 3: "", 4: "Off the end: the thrusters fly it"}
 
 
 def stunt(act, S, seed):
-    """one whole run, computed ahead: (rows, events, result). The car stands at the start of the run-up; it drives
-    up the ramp, holds nearly upside down for S['hold'] seconds, drives off the lip and the policy flies it down"""
+    """one whole run, computed ahead: (rows, events, result). The car stands at the start of the run-up; it drives up
+    the ramp, over its top and off its end at S['exit'] m/s; the fans stop as the front wheels pass the end, it falls
+    with its momentum, and the policy rolls it over sideways and lands it with its thrusters"""
     import random
     import torch
     torch.manual_seed(seed)
@@ -1237,44 +1351,49 @@ def stunt(act, S, seed):
     car.wind[0, 0], car.wind[0, 1] = S["wind"] * math.cos(ang), S["wind"] * math.sin(ang)
     car.fan_k[0] = rnd.uniform(0.95, 1.05)
     car.noz_k[0] = torch.tensor([rnd.uniform(0.95, 1.03) for _ in range(10)])
-    drv = Driver(car, torch.tensor([S["speed"]]), torch.tensor([S["hold_back"]]), torch.tensor([S["hold"]]), torch.tensor([S["exit"]]))
-    drv.rear_off = torch.zeros(1, dtype=torch.bool)
+    drv = Driver(car, torch.tensor([S["speed"]]), torch.tensor([S["exit"]]))
+    sens = Sensors(1, car.dev, car.dt_)
+    sens.reset(car, torch.zeros(1, dtype=torch.long))
     dt = CTRL_DT / SUBSTEPS
     rows, events = [], []
     prev = torch.zeros(1, ACT)
     last_ph, t_td, vz_td, tilt_td, x_td, result, t_end = -1, None, None, None, None, None, None
-    t_up = None
-    air_lip = None
-    for k in range(int(80.0 / CTRL_DT)):
+    t_up, air_go, crash_said = None, None, False
+    for k in range(int(90.0 / CTRL_DT)):
         ph = int(drv.phase[0])
+        obs = sens.read(car, drv, prev, CTRL_DT)
         if ph == 4:
-            if air_lip is None:
-                air_lip = float(car.air[0])
-            a = act(observe(car, drv, prev))
+            if air_go is None:
+                air_go = float(car.air[0])
+            a = act(obs)
             prev = a
             car.thr_cmd = mix(a)
-            if t_td is not None and float(car.t[0]) - t_td > SETTLE + 0.6:
-                car.thr_cmd = torch.zeros_like(car.thr_cmd)       # on its wheels: the valves close
+            if result is not None or (t_td is not None and float(car.t[0]) - t_td > SETTLE + 0.6):
+                car.thr_cmd = torch.zeros_like(car.thr_cmd)       # down, or lost: the valves close
         for _ in range(SUBSTEPS):
-            if not bool(drv.rear_off[0]):
+            if not bool(drv.released[0]):
                 drv.control(dt)
             if t_td is not None:
                 car.drive[:] = 0.0
-                car.brake[:] = 14000.0 if float(car.t[0]) - t_td > 0.6 else 0.0
+                car.brake[:] = 16000.0                                   # down: it brakes at once and stops where it landed
                 car.fan_cmd[:] = 0.0
             car.step(dt)
-            if t_td is None and bool(drv.rear_off[0]) and (bool(((car.wheel_on & (car.wheel_kind == 0)).any(-1))[0]) or float(car.touched_body[0]) > 0):
+            car.flying = drv.released & (car.t - drv.off_t > 0.8) & (t_td is None)
+            if t_td is None and bool(drv.released[0]) and (bool(((car.wheel_on & (car.wheel_kind == 0)).any(-1))[0]) or float(car.touched_body[0]) > 0):
                 t_td, vz_td, tilt_td, x_td = float(car.t[0]), float(car.vel[0, 2]), float(car.tilt()[0]), float(car.pos[0, 0])
                 events.append((t_td, "Touchdown: %.1f m/s down, leaning %.0f deg" % (-vz_td, math.degrees(tilt_td))))
         t = float(car.t[0])
         ph = int(drv.phase[0])
         if ph != last_ph:
-            events.append((t, {0: "Run-up: suction fans on", 1: "Up the ramp", 2: "Upside down, held by the fans", 3: "Driving to the lip",
-                               4: "Off the lip: the thrusters take over"}[ph]))
+            events.append((t, {0: "Run-up: suction fans on", 1: "Up the ramp, upside down over the top on the fans",
+                               4: "Over the end at %.0f km/h: the fans stop, it falls; the thrusters take over" % (3.6 * float(car.vel[0].norm()))}[ph]))
             last_ph = ph
         if ph == 4 and t_up is None and float(car.R()[0, 2, 2]) > math.cos(math.radians(20)) and float(car.pos[0, 2]) > 1.5:
             t_up = t
-            events.append((t, "Upright, %.0f m up" % float(car.pos[0, 2])))
+            events.append((t, "Rolled over sideways: upright %.0f m up, %.1f s after going over the end" % (float(car.pos[0, 2]) - RIDE, t - float(drv.off_t[0]))))
+        if float(car.touched_body[0]) > 0 and not crash_said:
+            crash_said = True
+            events.append((t, "Crash: the body hit the %s at %.0f km/h" % ("ramp" if int(car.body_kind[0]) == 1 else "tarmac", 3.6 * float(car.touched_body[0]))))
         rows.append(frame_of(car, drv, 0))
         if result is None:
             body = float(car.touched_body[0]) > 0
@@ -1289,11 +1408,13 @@ def stunt(act, S, seed):
                        else "hard landing" if t_td is not None else "time")
                 result = {"landed": landed, "text": why, "vz": None if vz_td is None else round(vz_td, 2),
                           "tilt": None if tilt_td is None else round(math.degrees(tilt_td), 1), "x": None if x_td is None else round(x_td, 1),
-                          "air_used": None if air_lip is None else round(air_lip - float(car.air[0]), 1), "air_left": round(float(car.air[0]), 1),
-                          "miss": None if x_td is None else round(math.hypot(x_td - LAND_X, float(car.pos[0, 1])), 1)}
+                          "air_used": None if air_go is None else round(air_go - float(car.air[0]), 1), "air_left": round(float(car.air[0]), 1),
+                          "miss": round(abs(float(car.pos[0, 1])), 1),         # how far off the white line it ended
+                          "crash": not landed and (body or ramp or (vz_td is not None and vz_td < -6.0)),
+                          "impact": round(max(float(car.touched_body[0]), -(vz_td or 0.0)), 1)}
                 events.append((t, ("Landed on the tarmac: %.1f m/s at touchdown, %.0f kg of air used" % (-vz_td, result["air_used"] or 0)) if landed
                                else "Lost it: " + why))
-                t_end = t + (3.0 if landed else 2.5)
+                t_end = t + (3.0 if landed else 4.0)
         if t_end is not None and t >= t_end:
             break
     return rows, sorted(events, key=lambda e: e[0]), result
@@ -1315,7 +1436,8 @@ def stunt_run(ctx):
         if str(f.name).endswith(".pt"):
             try:
                 h = torch.load(f.path, map_location="cpu", weights_only=False)
-                if h.get("format") != "esasim.stunt-policy/1":
+                if h.get("format") != "esasim.stunt-policy/2":
+                    ctx.log("Skipped %s: made for the earlier stunt (off the lip, without sensors)." % f.name)
                     continue
                 m_ = re.search(r"(\d{8}_\d{4})", str(f.name))
                 pols.append((m_.group(1) if m_ else "", os.path.getmtime(f.path), float(h.get("landed_full") or 0), float(h.get("minutes") or 0), int(h.get("stage") or 0), f))
@@ -1329,22 +1451,21 @@ def stunt_run(ctx):
     ready = [x for x in pols if x[2] >= 0.3]
     pol = (pick or ready or pols)[0][5]
     if not pick and ready and ready[0] is not pols[0]:
-        ctx.log("The newest policy, %s, has not finished its lessons yet: flying %s, the newest that lands off the lip." % (pols[0][5].name, pol.name))
+        ctx.log("The newest policy, %s, has not finished its lessons yet: flying %s, the newest that lands over the end." % (pols[0][5].name, pol.name))
     act, st = load_policy(pol.path)
     early = float(st.get("landed_full") or 0) < 0.3
-    ctx.log("Thruster policy %s: trained %.0f minutes on %s, reached lesson %d of %d, %.0f%% of the attempts off the lip landed when saved." % (
+    ctx.log("Thruster policy %s: trained %.0f minutes on %s, reached lesson %d of %d, %.0f%% of the attempts over the end of the ramp landed when saved." % (
         pol.name, float(st.get("minutes") or 0), st.get("device") or "?", int(st.get("stage") or 0) + 1, len(STAGES), 100 * float(st.get("landed_full") or 0)))
     if early:
-        ctx.log("Warning: an early policy (it has not learned to land off the lip yet): expect the car to be lost. Train longer.")
+        ctx.log("Warning: an early policy (it has not learned to land from over the end yet): expect the car to be lost. Train longer.")
     ch, ch_ev, ch_ctl = p.get("car_channel") or "car", p.get("events_channel") or "event", p.get("control_channel") or "control"
     num = lambda k, d: float(p.get(k)) if p.get(k) not in (None, "") else d   # noqa: E731
-    S = {"hold": num("hold", 3.0), "exit": num("exit", 7.0), "wind": num("wind", 2.0), "speed": num("speed", 8.0), "hold_back": num("hold_back", 7.0),
-         "runup": num("runup", 60.0)}
+    S = {"exit": num("exit", 6.0), "wind": num("wind", 2.0), "speed": num("speed", 8.0), "runup": num("runup", 60.0)}
     auto = bool(p.get("auto_start"))
     per_run = int(p.get("runs_per_run") if p.get("runs_per_run") is not None else 1)
     info_track = track_info(Track())
     log = open(ctx.output("runs", "runs.csv"), "w", encoding="utf-8")
-    log.write("run,seed,wind,exit_mps,hold_s,landed,outcome,touchdown_mps,tilt_deg,air_used_kg,miss_m\n")
+    log.write("run,seed,wind,exit_mps,landed,outcome,touchdown_mps,tilt_deg,air_used_kg,off_line_m,crash,impact_mps\n")
 
     def controls(wait):
         go = False
@@ -1355,7 +1476,7 @@ def stunt_run(ctx):
             c, v = str(d.get("control", "")).strip().lower(), d.get("value")
             if c in ("start", "go", "launch"):
                 go = True
-            elif c in ("hold", "exit", "wind", "speed"):
+            elif c in ("exit", "wind", "speed"):
                 try:
                     S[c] = float(v)
                 except (TypeError, ValueError):
@@ -1365,7 +1486,7 @@ def stunt_run(ctx):
     # the car parked at the start of the run-up, for the view while it waits
     parked = Car(1, "cpu")
     place_on_ground(parked, -S["runup"])
-    pdrv = Driver(parked, torch.zeros(1), torch.zeros(1), torch.zeros(1), torch.zeros(1))
+    pdrv = Driver(parked, torch.zeros(1), torch.zeros(1))
     for _ in range(100):
         parked.step(0.004)
     idle = {"format": "esasim.car/1", "kind": "idle", "ep": 0, "fields": FIELDS, "frames": [frame_of(parked, pdrv, 0)], "track": info_track,
@@ -1379,7 +1500,7 @@ def stunt_run(ctx):
         auto = False
         runs += 1
         seed = random.randrange(1, 10 ** 6)
-        ctx.log("Run %d: off the lip at %.0f m/s after %.0f s upside down, wind %.0f m/s." % (runs, S["exit"], S["hold"], S["wind"]))
+        ctx.log("Run %d: up the ramp and over its end at %.0f m/s; wind %.0f m/s." % (runs, S["exit"], S["wind"]))
         rows, events, res = stunt(act, dict(S), seed)
         base = {"format": "esasim.car/1", "kind": "run", "ep": runs, "fields": FIELDS, "track": info_track, "label": "Run %d" % runs, "wind": S["wind"]}
         for k in (3, 2, 1):
@@ -1411,7 +1532,7 @@ def stunt_run(ctx):
                 controls(0)
         if buf:
             ctx.telemetry(ch, dict(base, seq=seq, frames=buf, last=True, result=res))
-        log.write("%d,%d,%.1f,%.1f,%.1f,%s,%s,%s,%s,%s,%s\n" % (runs, seed, S["wind"], S["exit"], S["hold"], res["landed"], res["text"], res["vz"], res["tilt"], res["air_used"], res["miss"]))
+        log.write("%d,%d,%.1f,%.1f,%s,%s,%s,%s,%s,%s,%s,%s\n" % (runs, seed, S["wind"], S["exit"], res["landed"], res["text"], res["vz"], res["tilt"], res["air_used"], res["miss"], res.get("crash"), res.get("impact")))
         log.flush()
         ctx.log(("Landed: %.1f m/s at touchdown, %.0f kg of air used." % (-res["vz"], res["air_used"] or 0)) if res["landed"] else "Lost the car: %s." % res["text"])
         if per_run > 0 and runs >= per_run:
