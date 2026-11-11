@@ -1,6 +1,6 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 2 · machine block, Python: def run(ctx)
-# A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; ten cold-gas nozzles roll it over sideways and land it: learn the landing by PPO from simulated
+# Ramp stunt (ws-ramp-stunt) · version 3 · machine block, Python: def run(ctx)
+# A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it: learn the landing by PPO from simulated
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
 #
@@ -94,8 +94,8 @@ def pick_device(want):
 #   * two suction fans under the floor: they pull the car toward the surface below the floor only while the skirts seal
 #     (the gap is small and the surface faces the floor), up to 2 g together, spinning up and down in a quarter second;
 #   * ten cold-gas nozzles: four at the corners blowing down (lift, and rolling or pitching it when fired unevenly), two
-#     on the flanks blowing sideways, four in the tail blowing back (to accelerate it fast); none blows up; valves open
-#     in 25 ms; thrust held by a regulator until the tanks run low;
+#     on the flanks blowing sideways, four in the tail blowing back (to accelerate it fast; not used in this stunt);
+#     none blows up; valves open in 25 ms; thrust held by a regulator until the tanks run low;
 #     the air they blow leaves the car (it gets lighter);
 #   * the ramp: arcs and a straight in the x-z plane, from the road up to its lip at 168 deg, 5 m wide (RAMP below);
 #     the ground: flat tarmac; air drag and wind.
@@ -537,10 +537,10 @@ class Car:
 
 
 def mix(a, air_frac=None):
-    """the flight computer: the controller's five numbers, each -1..1 (lift; roll and pitch torques; sideways push; push
-    forward) shared out over the ten nozzles as valve openings 0..1. The corner nozzles only blow down: the lift and the
-    roll and pitch couples are made by opening them unevenly (a full roll command fires one side only); the flank
-    nozzles push the car sideways; the tail nozzles push it forward"""
+    """the flight computer: the landing controller's four numbers, each -1..1 (lift; roll and pitch torques; sideways
+    push) shared out over the nozzles as valve openings 0..1. The corner nozzles only blow down: the lift and the roll
+    and pitch couples are made by opening them unevenly (a full roll command fires one side only); the flank nozzles
+    push the car sideways. The tail nozzles (for fast acceleration) are not used in this stunt: they stay closed"""
     torch = _t()
     a = a.clamp(-1.0, 1.0)
     lift = (a[:, 0] + 1.0) * 0.5
@@ -548,7 +548,7 @@ def mix(a, air_frac=None):
     sx = torch.tensor([1.0, 1.0, -1.0, -1.0], device=a.device, dtype=a.dtype)
     down = (lift.unsqueeze(-1) + a[:, 1:2] * sy - a[:, 2:3] * sx).clamp(0.0, 1.0)
     side = torch.stack([(-a[:, 3]).clamp(min=0.0), a[:, 3].clamp(min=0.0)], -1)
-    rear = a[:, 4:5].clamp(min=0.0).expand(-1, 4)
+    rear = torch.zeros(a.shape[0], 4, device=a.device, dtype=a.dtype)
     return torch.cat([down, side, rear], -1)
 
 
@@ -629,7 +629,7 @@ CTRL_DT, SUBSTEPS = 0.02, 5         # the controller decides 50 times a second; 
 GAMMA = 0.995
 T_LIMIT = 9.0                       # seconds from letting go
 SETTLE = 1.0                        # seconds on the wheels before a landing counts
-ACT = 5
+ACT = 4
 # A reverse curriculum: easy starts first, the real one last. A lesson opens when half the attempts of the one before land.
 STAGES = [("upright", "a short drop, nearly level"), ("side", "on its side or nose down, 6-12 m up"),
           ("inverted", "upside down and moving, 12-20 m up"), ("top", "over the end of the ramp, as in the stunt")]
@@ -940,7 +940,8 @@ class StuntEnv:
         phi1 = potential(c)
         used = air0 - c.air
         self.air_used += used
-        r = (GAMMA * phi1 * (~end).to(phi1.dtype) - phi0) - 0.08 * used - 0.05 * c.vel[:, 2].clamp(min=0.0)
+        # air costs a little (a point per 28 kg): frugal, but never at the price of a landing; going up wastes it
+        r = (GAMMA * phi1 * (~end).to(phi1.dtype) - phi0) - 0.035 * used - 0.25 * c.vel[:, 2].clamp(min=0.0)
         bonus = torch.zeros_like(r)
         bonus = torch.where(why == 1, 100.0 + 25.0 * (1.0 + self.vz_td / 3.0).clamp(0.0, 1.0) + 10.0 * (1.0 - self.tilt_td / math.radians(15.0)).clamp(0.0, 1.0), bonus)
         bonus = torch.where(why == 2, -30.0 - 8.0 * (self.vz_td.abs() - 3.0).clamp(min=0.0, max=15.0), bonus)
