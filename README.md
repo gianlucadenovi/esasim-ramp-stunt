@@ -25,14 +25,14 @@ Both flows use the same block, **Ramp stunt**; its setting **What to do** picks 
 | **Wheels** | very stiff stunt suspension (spring, damper, bump stop: it carries 3 g and more on the ramp), tyres whose grip saturates, all-wheel drive, brakes, front steering |
 | **Body** | ten points (bumpers, sills, roof): anything but the tyres touching the road or the ramp is a crash |
 | **Suction fans** | two under the floor, full on as the car comes to the ramp (at 100% by its first slope); up to 2 g together, only while the skirts seal against the surface; spin up and down in a quarter second |
-| **Thrusters** | ten cold-gas nozzles: four under the floor blowing down, a pair just behind the front wheels and a pair behind the rear wheels (lift; fired on one side only they roll the car; the rear pair opens less, so lift and roll do not pitch the car), one on each flank blowing sideways, four in the tail blowing back for fast acceleration (not used in this stunt); none blows up; valves open in 25 ms; the air leaves the car, the regulator holds thrust until the tanks run low |
+| **Thrusters** | ten cold-gas nozzles: four under the floor blowing down, a pair just behind the front wheels and a pair behind the rear wheels (lift; fired on one side only they roll the car; the rear pair opens less, so lift and roll do not pitch the car), one on each flank blowing sideways (right above the front pair, level with the tops of the wheels), four in the tail blowing back for fast acceleration (not used in this stunt); none blows up; valves open in 25 ms; the air leaves the car, the regulator holds thrust until the tanks run low |
 | **Sensors** | what the controller sees: an IMU (gyro with its bias, accelerometer, attitude), two laser rangefinders (one in the floor looking down, one in the roof looking up, to 40 m: one of them always sees the ground), and an RTK GNSS receiver (position and velocity, 10 times a second), each with its noise |
 | **Ramp** | a 5 m wide concrete crescent: eases off the road (16 m radius), curves into a wall (9 m), bends over (10 m) to 168°, then runs straight for 8 m to its end about 20.7 m up |
 | **Air** | drag and wind |
 
 A scripted driver takes the car up the ramp, as in the stunt: it drives in at about 40 km/h along the white line and slows as it comes to the ramp, the fans full on by its first slope. Up the wall the climb takes its speed: it nearly stops just before it is upside down; then, held to the ceiling by the fans, it accelerates hard and drives off the end at about 30 mph. The moment its front wheels pass the end of the deck the fans stop; from then on nothing holds it but physics, and the policy flies: it rolls the car over sideways while it falls freely (the nose kept level), brakes hard as late as the thrust allows (from about 13 m up) so that it is down to a slow descent by about 9 ft, and settles gently onto its wheels on the white line, pointing along it, some 50 m out over the road. On its wheels it rolls on along the line and brakes to stop where it started, back on the start line. (Braking only from 9 ft would take about 7 g of thrust: falling from the end, the car reaches 9 ft at some 19 m/s; its thrusters give about 1.75 g.)
 
-The line is the hard part. The four down nozzles only blow down, so while the car is on its side, halfway through the roll, they push it sideways; and pitching while it rolls fast makes it come out of the roll turning (the gyroscopic coupling). The controller has to roll it with short kicks and coast in between, keep the heading while the car is on its side (there the pitch couple turns it about the vertical), and once upright steer back onto the line by banking slightly. The flank nozzles push it sideways but also turn it a little (they sit ahead of the centre of mass).
+The line is the hard part. The four down nozzles only blow down, so while the car is on its side, halfway through the roll, they push it sideways; and pitching while it rolls fast makes it come out of the roll turning (the gyroscopic coupling). The controller has to roll it with short kicks and coast in between, keep the heading while the car is on its side (there the pitch couple turns it about the vertical), and once upright steer back onto the line by banking slightly. The flank nozzles push it sideways but also turn it (they sit a metre ahead of the centre of mass).
 
 ## How it learns
 
@@ -61,7 +61,7 @@ In 3D the stunt is played smooth: each run is computed whole before it starts an
 
 1. Under **Compute**, check that a machine with an NVIDIA GPU is available for this project.
 2. Run **1 · Learn the landing** (an hour by default; **Finish now** ends it early and keeps the policy). Each run goes on from the furthest policy in **stunt-policy**; run it again to learn more.
-3. Run **2 · The stunt** and press **Start** (click in the view once for the sound). **Exit speed** and **Wind** change the next run. The **Telemetry** window shows the car's sensors on charts as the stunt plays; **Music** turns the soundtrack off; **Record** saves a video with the sound and the soundtrack.
+3. Run **2 · The stunt** and press **Start** (click in the view once for the sound). **Exit speed** and **Wind** change the next run. The **Telemetry** window shows the car's sensors on charts as the stunt plays; **Music** turns the soundtrack off; **Sensors** shows or hides the numbers, the air system panel and the laser beams; **Record** saves a video with the sound, the soundtrack and what is on screen.
 
 ## Settings worth knowing
 
@@ -87,7 +87,7 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 ### Blueprints in this repository
 
 - [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 11 blocks · version 5
-- [2 · The stunt](blueprints/2-the-stunt.json) · 6 blocks · version 4
+- [2 · The stunt](blueprints/2-the-stunt.json) · 6 blocks · version 5
 
 ### Workspace blocks it uses
 
