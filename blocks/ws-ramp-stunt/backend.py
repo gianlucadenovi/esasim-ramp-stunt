@@ -1,6 +1,6 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 3 · machine block, Python: def run(ctx)
-# A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it: learn the landing by PPO from simulated
+# Ramp stunt (ws-ramp-stunt) · version 4 · machine block, Python: def run(ctx)
+# A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it: the controller learns from simulated se
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
 #
@@ -14,9 +14,10 @@
 # Settings ctx.params["key"]
 #   mode        select    What to do = "Learn the landing" of Learn the landing | Run the stunt
 #   accelerator select    Accelerator = "auto" of auto | NVIDIA GPU | CPU
+#   warm_start  bool      Warm start = true
 #   cars        number    Cars at once = 4096
 #   minutes     number    Minutes at most = 60
-#   target      number    Stop at landing rate = 0.9
+#   target      number    Stop at landing rate = 0.98
 #   replay_every number    Replay every (s) = 12
 #   from_scratch bool      Start from scratch = false
 #   seed        number    Seed = 1
@@ -739,7 +740,8 @@ def potential(car):
     slow = (car.vel[:, 2] - vz_t).clamp(min=0.0)
     side = (car.vel * yb).sum(-1).abs()
     near_ramp = (car.pos[:, 0] - (car.track.x0 - 1.0)).clamp(min=0.0)
-    return -(1.5 * tilt + 3.0 * tilt * low + 0.2 * car.w.norm(dim=-1) + (2.0 + 4.0 * low) * torch.log1p(fast / 1.5) + 0.4 * torch.log1p(slow / 2.0)
+    # falling slower than that is penalised too (less): hovering only burns the air it needs to land
+    return -(1.5 * tilt + 3.0 * tilt * low + 0.2 * car.w.norm(dim=-1) + (2.0 + 4.0 * low) * torch.log1p(fast / 1.5) + 1.2 * torch.log1p(slow / 1.5)
              + 0.5 * low * torch.log1p(side / 2.0) + 1.2 * xb[:, 2].abs() + 0.8 * near_ramp)
 
 
@@ -784,6 +786,33 @@ def free_start(car, drv, idx, kind, gen):
     drv.off_t[idx] = car.t[idx]
     drv.released[idx] = True
     car.flying[idx] = True
+
+
+def autopilot(c, drv):
+    """a simple hand-written autopilot, for the warm start only (it reads the true state, which the policy never does):
+    upside down it first pushes off the deck, then rolls over sideways with the down nozzles of one side, keeps the nose
+    level once upright, brakes the fall to a set profile and damps sideways sliding. Its landings are what the network
+    copies (from its own sensors) before it improves on them by trial and error"""
+    import torch
+    R = c.R()
+    xb, yb, zb = R[:, :, 0], R[:, :, 1], R[:, :, 2]
+    ub = torch.einsum("nji,j->ni", R, torch.tensor([0.0, 0.0, 1.0], device=c.dev, dtype=c.dt_))      # up, in the car's frame
+    phi = torch.atan2(ub[:, 1], ub[:, 2])
+    phi = torch.where(phi < -2.2, phi + 2 * math.pi, phi)
+    a1 = (-1.2 * phi - 0.45 * c.w[:, 0]).clamp(-1.0, 1.0)
+    a2 = torch.where(zb[:, 2] > 0.3, (2.0 * xb[:, 2] - 0.6 * c.w[:, 1]).clamp(-1.0, 1.0), torch.zeros_like(phi))
+    h = (c.pos[:, 2] - RIDE).clamp(min=0.0)
+    vzt = -(0.6 + torch.sqrt(2.0 * 3.5 * h))
+    up = zb[:, 2]
+    need = c.mass() * (G0 + 6.0 * (vzt - c.vel[:, 2])) / (4 * NOZ_MAX[0] * up.clamp(min=0.3))
+    lift = torch.where(up > 0.5, need.clamp(0.0, 1.0), torch.zeros_like(need))
+    a0 = lift * 2.0 - 1.0
+    vyb = (c.vel * yb).sum(-1)
+    a3 = torch.where(up > 0.7, (-0.4 * vyb).clamp(-1.0, 1.0), torch.zeros_like(vyb))
+    early = (c.t - drv.off_t) < 0.35
+    a0 = torch.where(early, torch.zeros_like(a0), a0)
+    a1 = torch.where(early, torch.zeros_like(a1), a1)
+    return torch.stack([a0, a1, a2, a3], -1)
 
 
 DRV_STATE = ["phase", "off_t", "released", "v_in", "v_exit"]
@@ -940,8 +969,8 @@ class StuntEnv:
         phi1 = potential(c)
         used = air0 - c.air
         self.air_used += used
-        # air costs a little (a point per 28 kg): frugal, but never at the price of a landing; going up wastes it
-        r = (GAMMA * phi1 * (~end).to(phi1.dtype) - phi0) - 0.035 * used - 0.25 * c.vel[:, 2].clamp(min=0.0)
+        # air costs a little (a point per 28 kg): frugal, but never at the price of a landing
+        r = (GAMMA * phi1 * (~end).to(phi1.dtype) - phi0) - 0.035 * used - 0.05 * c.vel[:, 2].clamp(min=0.0)
         bonus = torch.zeros_like(r)
         bonus = torch.where(why == 1, 100.0 + 25.0 * (1.0 + self.vz_td / 3.0).clamp(0.0, 1.0) + 10.0 * (1.0 - self.tilt_td / math.radians(15.0)).clamp(0.0, 1.0), bonus)
         bonus = torch.where(why == 2, -30.0 - 8.0 * (self.vz_td.abs() - 3.0).clamp(min=0.0, max=15.0), bonus)
@@ -996,7 +1025,7 @@ class RunningNorm:
 
 
 class PPO:
-    def __init__(self, torch, dev, n_env, horizon=48, lr=3e-4, gamma=GAMMA, lam=0.95, clip=0.2, epochs=4, minibatches=4, rscale=0.1):
+    def __init__(self, torch, dev, n_env, horizon=48, lr=1.5e-4, gamma=GAMMA, lam=0.95, clip=0.2, epochs=4, minibatches=4, rscale=0.1):
         self.torch, self.dev = torch, dev
         self.net = make_nets(torch).to(dev)
         self.opt = torch.optim.Adam(self.net.parameters(), lr=lr, eps=1e-5)
@@ -1016,7 +1045,7 @@ class PPO:
             lp = (-0.5 * ((a - mu) / std) ** 2 - self.net.log_std - 0.9189385).sum(-1)
             return a, lp, v
 
-    def update(self, buf, last_v):
+    def update(self, buf, last_v, value_only=False):
         torch = self.torch
         obs, act, lp, val, rew, done = buf
         T = rew.shape[0]
@@ -1049,7 +1078,7 @@ class PPO:
                 vc = val[idx] + (v - val[idx]).clamp(-1.0, 1.0)
                 vl = torch.max((v - ret[idx]) ** 2, (vc - ret[idx]) ** 2).mean()
                 ent = (ls + 1.4189385).sum()
-                loss = pl + 0.5 * vl - 0.001 * ent
+                loss = 0.5 * vl if value_only else pl + 0.5 * vl - 0.001 * ent
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
@@ -1110,6 +1139,52 @@ def chunks(rows, size=150):
         yield i // size, rows[i:i + size], i + size >= len(rows)
 
 
+def warm_start(env, algo, log=None, rounds=3, steps=250):
+    """the network copies the autopilot (DAgger): first the autopilot flies and the network learns its commands from its
+    own sensors; then the network flies, the autopilot says what it would have done in each of the states the network
+    got itself into, and the network learns those too; a few rounds. Returns the share of landings in the last round"""
+    import torch
+    torch_ = torch
+    X, Y = [], []
+    opt = torch_.optim.Adam(algo.net.pi.parameters(), lr=1e-3)
+    rate = 0.0
+    for rnd in range(rounds + 1):
+        env.mix = [0.3, 0.3, 0.0, 0.4]
+        with torch_.no_grad():
+            ob_ = env.start()
+            got, ok = 0, 0
+            for _ in range(steps):
+                a_ = autopilot(env.car, env.drv)
+                X.append(ob_)
+                Y.append(a_)
+                if rnd == 0:
+                    act_ = a_ + 0.08 * torch_.randn_like(a_)
+                else:
+                    act_, _, _ = algo.act(ob_, deterministic=True)
+                ob_, _, d_, info_ = env.step(act_)
+                if bool(d_.any()):
+                    got += int(d_.sum())
+                    ok += int(info_["landed"][d_].sum())
+        rate = ok / max(1, got)
+        if log:
+            log("warm start, round %d: %s landed %d of %d attempts" % (rnd + 1, "the autopilot" if rnd == 0 else "the network", ok, got))
+        Xa, Ya = torch_.cat(X), torch_.cat(Y)
+        if rnd == 0:
+            algo.norm.update(Xa)
+        xn = algo.norm(Xa)
+        for _ in range(12 if rnd else 25):
+            perm = torch_.randperm(Xa.shape[0], device=Xa.device)
+            for i in range(0, Xa.shape[0], 8192):
+                j = perm[i:i + 8192]
+                loss = ((algo.net.pi(xn[j]) - Ya[j]) ** 2).mean()
+                opt.zero_grad(set_to_none=True)
+                loss.backward()
+                opt.step()
+    with torch_.no_grad():
+        algo.net.log_std.fill_(-2.3)
+    return rate
+
+
 def learn_run(ctx):
     import collections
     import csv
@@ -1159,6 +1234,20 @@ def learn_run(ctx):
         ctx.log("Starting from scratch (asked): the %d policies so far are left as they are." % len(found))
     env = StuntEnv(n, dev, seed=seed)
     pool = max(2048, min(8192, 2 * n)) if kind != "cpu" else 1024
+    warm = bool(p.get("warm_start", True)) and not (found and not bool(p.get("from_scratch")))
+    value_warm = 0
+    if warm:
+        # the warm start: the network first copies the landings of a simple hand-written autopilot, from its own sensors
+        # (the autopilot reads the true state), on short drops, sideways starts and the real thing; then it learns on by
+        # trial and error. Without it (Warm start off) it starts from nothing and learns everything by trial and error.
+        ctx.progress(1, "warm start: watching an autopilot land")
+        ctx.log("Warm start: the network first copies an autopilot's landings, seeing only its sensors; then it improves on them by trial and error.")
+        t_ = time.time()
+        env.make_pool(len(STAGES) - 1, pool, log=ctx.log)
+        rate_ = warm_start(env, algo, ctx.log)
+        ctx.log("Warm start done in %.0f s: flying on its own, the copy lands %.0f%% of its attempts." % (time.time() - t_, 100 * rate_))
+        start_stage = len(STAGES) - 1
+        value_warm = 8
     stage = start_stage
 
     def open_lesson(s):
@@ -1171,10 +1260,12 @@ def learn_run(ctx):
         env.mix = [0.0] * len(STAGES)
         if s == 0:
             env.mix[0] = 1.0
+        elif warm and s == len(STAGES) - 1:
+            env.mix = [0.2, 0.2, 0.1, 0.5]          # after the warm start: mostly the real thing, the easier lessons kept up
         else:
             for k in range(s):
-                env.mix[k] = 0.4 / s
-            env.mix[s] = 0.6
+                env.mix[k] = 0.5 / s
+            env.mix[s] = 0.5
     open_lesson(stage)
     with torch.no_grad():
         obs = env.start()
@@ -1264,8 +1355,10 @@ def learn_run(ctx):
                 if len(rec) > 1500:
                     rec = rec[-1500:]
                 _, _, last_v = algo.act(obs)
-            stats = algo.update((ob, ac, lps, vals, rews, dones), last_v)
-            algo.norm.update(ob.reshape(-1, OBS))
+            stats = algo.update((ob, ac, lps, vals, rews, dones), last_v, value_only=value_warm > 0)
+            value_warm = max(0, value_warm - 1)          # after the warm start the value network learns a few rounds first
+            if stage == 0 and start_stage == 0:
+                algo.norm.update(ob.reshape(-1, OBS))     # the input scaling settles in lesson 1, then stays: later lessons do not shift what it learned
             it += 1
             sps = T * n / max(1e-6, time.time() - t0)
             rate = sum(hist[stage]) / len(hist[stage]) if len(hist[stage]) >= hist[stage].maxlen // 2 else 0.0
@@ -1300,7 +1393,7 @@ def learn_run(ctx):
                 cw.writerow([round(elapsed / 60, 2), it, stage + 1, round(rate, 4), round(fr, 4), row["touchdown_mps"], row["air_kg"], row["return"], row["steps_per_s"]])
                 curve.flush()
                 ctx.progress(min(99, 100 * elapsed / (minutes * 60)), "lesson %d of %d · %.0f%% land · %d attempts" % (stage + 1, len(STAGES), 100 * (fr if stage == len(STAGES) - 1 else rate), episodes))
-            if stage == len(STAGES) - 1 and len(hist[stage]) >= hist[stage].maxlen and fr >= target:
+            if stage == len(STAGES) - 1 and len(hist[stage]) >= hist[stage].maxlen and fr >= target and elapsed > min(3.0, minutes / 4) * 60:
                 stop_reason = "target"
                 break
     finally:
