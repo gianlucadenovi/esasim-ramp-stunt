@@ -30,7 +30,7 @@ Both flows use the same block, **Ramp stunt**; its setting **What to do** picks 
 | **Ramp** | a 5 m wide concrete crescent: eases off the road (16 m radius), curves into a wall (9 m), bends over (10 m) to 168°, then runs straight for 8 m to its end about 20.7 m up |
 | **Air** | drag and wind |
 
-A scripted driver takes the car up the ramp: it drives in at about 30 km/h along the white line, the fans start as it reaches the ramp and pull just hard enough to keep the tyres pressed (fully on when upside down), and it eases off over the top to its exit speed and drives off the end without stopping. The moment its front wheels pass the end of the deck the fans stop; from then on nothing holds it but physics, and the policy flies: it rolls the car over sideways (the nose kept level), slows the fall and sets it down on the white line, pointing along it, its forward speed carrying it some 20 m out over the road. On its wheels, it brakes.
+A scripted driver takes the car up the ramp: it drives in at about 30 km/h along the white line, the fans start as it reaches the ramp and pull just hard enough to keep the tyres pressed (fully on when upside down), and it eases off over the top to its exit speed and drives off the end without stopping. The moment its front wheels pass the end of the deck the fans stop; from then on nothing holds it but physics, and the policy flies: it rolls the car over sideways (the nose kept level), slows the fall and sets it down on the white line, pointing along it, its forward speed carrying it some 20 m out over the road. On its wheels it rolls on along the line and brakes to stop where it started, back on the start line.
 
 The line is the hard part. The four corner nozzles only blow down, so while the car is on its side, halfway through the roll, they push it sideways; and pitching while it rolls fast makes it come out of the roll turning (the gyroscopic coupling). The controller has to roll it with short kicks and coast in between, keep the heading while the car is on its side (there the pitch couple turns it about the vertical), and once upright steer back onto the line by banking slightly. The flank nozzles push it sideways but also turn it a little (they sit ahead of the centre of mass).
 
@@ -55,7 +55,7 @@ In 3D the stunt is played smooth: each run is computed whole before it starts an
 
 - A machine with the EsaSim worker and an NVIDIA GPU for training (a CPU works, much slower). Flow 2 runs on any machine.
 - Python packages, installed by the worker the first time: `torch`.
-- EsaSim with the 3D view at version 1.44 or later: it draws the ramp, the lights and the stunt's car (a licensed model shipped with the view), and makes the sounds. Another GLB or glTF car wired to the **Scene** input of the 3D views takes its place; separate wheel parts named `wheel…` turn, steer and ride on their springs.
+- EsaSim with the 3D view at version 1.45 or later: it draws the ramp, the lights and the stunt's car (a licensed model shipped with the view), and makes the sounds. Another GLB or glTF car wired to the **Scene** input of the 3D views takes its place; separate wheel parts named `wheel…` turn, steer and ride on their springs.
 
 ## How to run it
 
@@ -66,7 +66,7 @@ In 3D the stunt is played smooth: each run is computed whole before it starts an
 ## Settings worth knowing
 
 - **Learn the landing**: **Warm start** (on), **Cars at once** (4,096 on a GPU), **Minutes at most** (60), **Stop at landing rate** (98 % of the attempts over the end), **Replay every** (12 s), **Start from scratch**.
-- **The stunt**: **Exit speed** (m/s over the end, 6), **Wind** (m/s, 2), **Run-in speed** (8 m/s), **Policy file** (empty: the newest that lands).
+- **The stunt**: **Exit speed** (m/s over the end, 6), **Wind** (m/s, 2), **Run-in speed** (8 m/s), **Run-up** (60 m: where it starts and stops), **Policy file** (empty: the newest that lands).
 
 ## What you get
 
@@ -87,10 +87,10 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 ### Blueprints in this repository
 
 - [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 11 blocks · version 3
-- [2 · The stunt](blueprints/2-the-stunt.json) · 8 blocks · version 2
+- [2 · The stunt](blueprints/2-the-stunt.json) · 6 blocks · version 2
 
 ### Workspace blocks it uses
 
-- [Ramp stunt](blocks/ws-ramp-stunt) · version 6
+- [Ramp stunt](blocks/ws-ramp-stunt) · version 7
 
 Keys pasted in blocks (secret settings) are not saved here. Datasets, results and the team stay in EsaSim.

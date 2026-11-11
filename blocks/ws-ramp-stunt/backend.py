@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 6 · machine block, Python: def run(ctx)
+# Ramp stunt (ws-ramp-stunt) · version 7 · machine block, Python: def run(ctx)
 # A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it on the white line: the controller learns
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
@@ -23,7 +23,7 @@
 #   seed        number    Seed = 1
 #   exit        number    Exit speed (m/s) = 6
 #   wind        number    Wind (m/s) = 2
-#   speed       number    Run-in speed (m/s) = 8
+#   speed       number    Run-in speed (m/s) = 11
 #   runup       number    Run-up (m) = 60
 #   policy_file text      Policy file = ""
 #   runs_per_run number    Stunts per run = 1
@@ -892,7 +892,7 @@ def top_pool(size, dev, dtype, gen, log=None):
     U = lambda a, b: a + (b - a) * torch.rand(size, device=car.dev, dtype=car.dt_, generator=gen)   # noqa: E731
     place_on_ground(car, -22.0, y=0.0, yaw=0.0, v=0.0)
     car.pos[:, 1] = U(-0.4, 0.4)
-    car.vel[:, 0] = U(6.0, 9.5)
+    car.vel[:, 0] = U(6.0, 12.0)
     car.q = q_euler(torch.zeros_like(car.t), torch.zeros_like(car.t), U(-0.03, 0.03))
     car.air = U(230.0, 250.0)
     car.fan_k = U(0.9, 1.1)
@@ -1594,7 +1594,7 @@ def stunt(act, S, seed):
                           "safe": safe,
                           "crash": not landed and (body or ramp or (vz_td is not None and vz_td < -6.0)),
                           "impact": round(max(float(car.touched_body[0]), -(vz_td or 0.0)), 1)}
-                events.append((t, ("Landed on the line: %.1f m/s at touchdown, %.1f m off it, %.0f kg of air used" % (-vz_td, abs(y_td), result["air_used"] or 0)) if landed
+                events.append((t, ("Car landed! %.1f m/s at touchdown, %.0f kg of air used" % (-vz_td, result["air_used"] or 0)) if landed
                                else ("Down safely but off the line: %.1f m off it, %.0f deg askew" % (abs(y_td), math.degrees(h_td))) if safe else "Lost it: " + why))
                 t_end = None if safe else t + 4.0                    # down safely: the run goes on until the car has stopped
         if result is not None and t_end is None and float(car.vel[0].norm()) < 0.15:
@@ -1609,6 +1609,7 @@ def stunt_run(ctx):
     import random
     import re
     import os
+    import threading
     import time
     import torch
     p = ctx.params
@@ -1645,7 +1646,7 @@ def stunt_run(ctx):
         ctx.log("Warning: an early policy (it has not learned to land from over the end yet): expect the car to be lost. Train longer.")
     ch, ch_ev, ch_ctl = p.get("car_channel") or "car", p.get("events_channel") or "event", p.get("control_channel") or "control"
     num = lambda k, d: float(p.get(k)) if p.get(k) not in (None, "") else d   # noqa: E731
-    S = {"exit": num("exit", 6.0), "wind": num("wind", 2.0), "speed": num("speed", 8.0), "runup": num("runup", 60.0)}
+    S = {"exit": num("exit", 6.0), "wind": num("wind", 2.0), "speed": num("speed", 11.0), "runup": num("runup", 60.0)}
     auto = bool(p.get("auto_start"))
     per_run = int(p.get("runs_per_run") if p.get("runs_per_run") is not None else 1)
     info_track = track_info(Track())
@@ -1677,16 +1678,35 @@ def stunt_run(ctx):
     idle = {"format": "esasim.car/1", "kind": "idle", "ep": 0, "fields": FIELDS, "frames": [frame_of(parked, pdrv, 0)], "track": info_track,
             "status": "Ready: press Start", "phase": "On the start line"}
     ctx.telemetry(ch, idle)
+
+    def prepare(S_=None, log_=True):
+        """the next run, computed ahead (it takes a while): Start then goes straight to the countdown"""
+        S_ = dict(S_ or S)
+        seed_ = random.randrange(1, 10 ** 6)
+        t_ = time.time()
+        rows_, events_, res_ = stunt(act, dict(S_), seed_)
+        if log_:
+            ctx.log("Next run ready (%.0f m/s over the end, wind %.0f m/s): computed in %.1f s." % (S_["exit"], S_["wind"], time.time() - t_))
+        return {"S": S_, "seed": seed_, "rows": rows_, "events": events_, "res": res_}
+
+    ctx.telemetry(ch_ev, {"text": "Getting the stunt ready…"})
+    ready = prepare()
     ctx.telemetry(ch_ev, {"text": "Ready: press Start" + (" (warning: an early policy, it will rarely land)" if early else "")})
     runs = 0
     while True:
-        if not auto and not controls(0.5):
-            continue
+        if not auto:
+            go = controls(0.5)
+            if ready is None or ready["S"] != S:      # a slider moved: the next run again, with it
+                ready = prepare()
+            if not go:
+                continue
         auto = False
+        if ready is None or ready["S"] != S:
+            ready = prepare()
         runs += 1
-        seed = random.randrange(1, 10 ** 6)
+        seed, rows, events, res = ready["seed"], ready["rows"], ready["events"], ready["res"]
+        ready = None
         ctx.log("Run %d: up the ramp and over its end at %.0f m/s; wind %.0f m/s." % (runs, S["exit"], S["wind"]))
-        rows, events, res = stunt(act, dict(S), seed)
         base = {"format": "esasim.car/1", "kind": "run", "ep": runs, "fields": FIELDS, "track": info_track, "label": "Run %d" % runs, "wind": S["wind"]}
         # the whole run is computed already: it goes to the view at once, with the moment it starts (after a 3-2-1), and the
         # view plays it on its own clock: smooth whatever the network or the machines do. The events come in real time.
@@ -1700,6 +1720,13 @@ def stunt_run(ctx):
             ctx.telemetry(ch, item)
         ctx.telemetry(ch_ev, {"text": "Run %d: 3, 2, 1…" % runs})
         t_go = time.time() + lead
+        # while this one plays, the next run is computed alongside (with these settings; again if a slider moves)
+        nxt = {}
+        th = None
+        if per_run == 0 or runs < per_run:
+            S_now = dict(S)
+            th = threading.Thread(target=lambda: nxt.update(prepare(S_now, False)), daemon=True)
+            th.start()
         t0 = rows[0][0]
         for ev_t, ev_text in events:
             while True:
@@ -1714,14 +1741,17 @@ def stunt_run(ctx):
             controls(0)
         log.write("%d,%d,%.1f,%.1f,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" % (runs, seed, S["wind"], S["exit"], res["landed"], res["text"], res["vz"], res["tilt"], res["air_used"], res["miss"], res.get("hdg"), res.get("crash"), res.get("impact")))
         log.flush()
-        ctx.log(("Landed on the line: %.1f m/s at touchdown, %.1f m off it, %.0f kg of air used." % (-res["vz"], res["miss"], res["air_used"] or 0)) if res["landed"]
+        ctx.log(("Car landed! %.1f m/s at touchdown, %.0f kg of air used." % (-res["vz"], res["air_used"] or 0)) if res["landed"]
                 else ("Down safely, but %.1f m off the line and %.0f deg askew." % (res["miss"], res["hdg"])) if res.get("safe") else "Lost the car: %s." % res["text"])
         if per_run > 0 and runs >= per_run:
             ctx.telemetry(ch_ev, {"text": "Run over: run the flow again for another one"})
             log.close()
             return {"runs": runs, "landed": res["landed"], "outcome": res["text"], "touchdown_mps": res["vz"], "air_used_kg": res["air_used"]}
-        ctx.telemetry(ch_ev, {"text": "Ready: press Start for the next run"})
         ctx.telemetry(ch, dict(idle, ep=runs + 1000))
+        if th is not None:
+            th.join()
+        ready = nxt if nxt.get("S") == S else prepare()
+        ctx.telemetry(ch_ev, {"text": "Ready: press Start for the next run"})
 
 
 def run(ctx):
