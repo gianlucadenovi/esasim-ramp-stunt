@@ -5,8 +5,8 @@
     },
     "name": "2 · The stunt",
     "description": "Press Start: the car drives up the crescent ramp on its suction fans, holds upside down, drives off the lip, and the learned policy lands it with its air thrusters, live in 3D.",
-    "published_version": 3,
-    "updated": "2026-11-11 16:34:00",
+    "published_version": 4,
+    "updated": "2026-11-11 18:11:32",
     "graph": {
         "nodes": [
             {
@@ -28,10 +28,10 @@
                 "y": 200,
                 "params": {
                     "mode": "Run the stunt",
-                    "exit": 6,
+                    "exit": 13.4,
                     "wind": 2,
                     "speed": 11,
-                    "runup": 60,
+                    "runup": 80,
                     "runs_per_run": 0,
                     "auto_start": false
                 },
@@ -57,7 +57,7 @@
                 "params": {
                     "quality": "high",
                     "events_channel": "event",
-                    "controls": "button Start\nslider exit 4 10 6\nslider wind 0 10 2",
+                    "controls": "button Start\nslider exit 10 15 13.4\nslider wind 0 10 2",
                     "control_channel": "control",
                     "camera": "free"
                 },
