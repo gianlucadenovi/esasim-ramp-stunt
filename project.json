@@ -18,7 +18,7 @@
         {
             "name": "2 · The stunt",
             "file": "blueprints/2-the-stunt.json",
-            "published_version": 0,
+            "published_version": 1,
             "nodes": 8
         }
     ],
