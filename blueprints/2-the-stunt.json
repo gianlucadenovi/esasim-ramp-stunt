@@ -5,8 +5,8 @@
     },
     "name": "2 · The stunt",
     "description": "Press Start: the car drives up the crescent ramp on its suction fans, holds upside down, drives off the lip, and the learned policy lands it with its air thrusters, live in 3D.",
-    "published_version": 2,
-    "updated": "2026-11-11 15:13:20",
+    "published_version": 3,
+    "updated": "2026-11-11 16:34:00",
     "graph": {
         "nodes": [
             {
@@ -75,16 +75,15 @@
                 "title": "Chase camera"
             },
             {
-                "id": "runs_tbl",
-                "type": "gauge-view",
-                "x": 380,
-                "y": 460,
+                "id": "telemetry_win",
+                "type": "viewer-3d",
+                "x": 1140,
+                "y": 120,
                 "params": {
-                    "fields": "car.speed_kmh,car.height_m,car.air_kg,car.g",
-                    "style": "number",
-                    "decimals": 1
+                    "quality": "fast",
+                    "camera": "car: telemetry"
                 },
-                "title": "Live numbers"
+                "title": "Telemetry"
             }
         ],
         "edges": [
@@ -133,14 +132,14 @@
                 }
             },
             {
-                "id": "stunt.telemetry>runs_tbl.data",
+                "id": "tel.stream>telemetry_win.scene",
                 "from": {
-                    "node": "stunt",
-                    "port": "telemetry"
+                    "node": "tel",
+                    "port": "stream"
                 },
                 "to": {
-                    "node": "runs_tbl",
-                    "port": "data"
+                    "node": "telemetry_win",
+                    "port": "scene"
                 }
             }
         ],
@@ -159,11 +158,11 @@
                     "w": 6,
                     "h": 15
                 },
-                "runs_tbl": {
-                    "x": 6,
-                    "y": 24,
-                    "w": 6,
-                    "h": 3
+                "telemetry_win": {
+                    "x": 0,
+                    "y": 15,
+                    "w": 12,
+                    "h": 12
                 }
             }
         }
