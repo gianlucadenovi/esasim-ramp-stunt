@@ -5,8 +5,8 @@
     },
     "name": "1 · Learn the landing",
     "description": "Thousands of cars at once on the GPU learn to fly off the lip of the ramp and land, lesson by lesson; one attempt is replayed in 3D every few seconds. The policy goes to the stunt-policy dataset.",
-    "published_version": 2,
-    "updated": "2026-11-11 05:26:17",
+    "published_version": 3,
+    "updated": "2026-11-11 06:16:10",
     "graph": {
         "nodes": [
             {
@@ -120,9 +120,9 @@
                     "channel": "train",
                     "ymin": "0",
                     "ymax": "100",
-                    "title": "Landing (%): this lesson, and over the end of the ramp"
+                    "title": "Landing on the line (%): this lesson, and over the end of the ramp"
                 },
-                "title": "Attempts that land"
+                "title": "Attempts that land on the line"
             },
             {
                 "id": "touch",
@@ -132,9 +132,9 @@
                 "params": {
                     "kind": "line",
                     "x": "minutes",
-                    "y": "touchdown_mps,air_kg",
+                    "y": "touchdown_mps,off_line_m",
                     "channel": "train",
-                    "title": "Median touchdown speed (m/s) and air used (kg)"
+                    "title": "Median touchdown speed (m/s) and distance off the line (m)"
                 },
                 "title": "Touchdown"
             },
@@ -146,7 +146,7 @@
                 "params": {
                     "kind": "area",
                     "x": "minutes",
-                    "y": "outcomes.landed,outcomes.hard landing,outcomes.on its side or roof,outcomes.hit the ramp,outcomes.time",
+                    "y": "outcomes.landed,outcomes.off the line,outcomes.hard landing,outcomes.on its side or roof,outcomes.hit the ramp,outcomes.time",
                     "channel": "train",
                     "title": "How attempts end (%)"
                 },
@@ -158,9 +158,9 @@
                 "x": 1140,
                 "y": 360,
                 "params": {
-                    "fields": "train.stage,train.landed_full,train.attempts,train.steps_per_s,train.minutes",
+                    "fields": "train.stage,train.landed_full,train.off_line_m,train.air_kg,train.attempts,train.minutes",
                     "style": "number",
-                    "decimals": 0
+                    "decimals": 1
                 },
                 "title": "Learning"
             }
