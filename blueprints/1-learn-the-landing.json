@@ -6,7 +6,7 @@
     "name": "1 · Learn the landing",
     "description": "Thousands of cars at once on the GPU learn to fly off the lip of the ramp and land, lesson by lesson; one attempt is replayed in 3D every few seconds. The policy goes to the stunt-policy dataset.",
     "published_version": 2,
-    "updated": "2026-11-11 03:51:14",
+    "updated": "2026-11-11 05:26:17",
     "graph": {
         "nodes": [
             {
@@ -29,9 +29,10 @@
                 "params": {
                     "mode": "Learn the landing",
                     "accelerator": "NVIDIA GPU",
+                    "warm_start": true,
                     "cars": 4096,
                     "minutes": 60,
-                    "target": 0.9,
+                    "target": 0.98,
                     "replay_every": 12,
                     "seed": 1
                 },
@@ -119,7 +120,7 @@
                     "channel": "train",
                     "ymin": "0",
                     "ymax": "100",
-                    "title": "Landing (%): this lesson, and let go at the top"
+                    "title": "Landing (%): this lesson, and over the end of the ramp"
                 },
                 "title": "Attempts that land"
             },
@@ -283,7 +284,7 @@
                     "x": 0,
                     "y": 0,
                     "w": 6,
-                    "h": 8
+                    "h": 18
                 },
                 "cam_chase": {
                     "x": 6,
@@ -293,7 +294,7 @@
                 },
                 "cam_side": {
                     "x": 0,
-                    "y": 8,
+                    "y": 18,
                     "w": 6,
                     "h": 10
                 },
@@ -317,7 +318,7 @@
                 },
                 "numbers": {
                     "x": 0,
-                    "y": 18,
+                    "y": 28,
                     "w": 6,
                     "h": 3
                 }
