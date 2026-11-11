@@ -1,5 +1,5 @@
 # ── EsaSim block ──────────────────────────────────────────────────────
-# Ramp stunt (ws-ramp-stunt) · version 5 · machine block, Python: def run(ctx)
+# Ramp stunt (ws-ramp-stunt) · version 6 · machine block, Python: def run(ctx)
 # A hypercar drives up a 21 m crescent ramp upside down on its suction fans, over the top and off its end; its cold-gas nozzles roll it over sideways and land it on the white line: the controller learns
 # Workspace: Gianluca De Novi's workspace · Author: Gianluca De Novi
 # Saved: 2026-11-11
@@ -616,6 +616,31 @@ class Driver:
         return ph
 
 
+STOP_X = -60.0                    # after landing the car stops where it started: the start line of the run-up (Run-up)
+
+
+def rollout(car, down, stop_x=STOP_X):
+    """the cars that are down on their wheels (down: (N,) bool): no drive, steered along the white line, rolling on with
+    the speed they landed with and braking just hard enough to stop where they started (the start line at stop_x), at
+    once if already past it; the others: untouched"""
+    torch = _t()
+    R = car.R()
+    xb, yb = R[:, :, 0], R[:, :, 1]
+    v_long = (car.vel * xb).sum(-1)
+    sp = v_long.abs().clamp(min=1.0)
+    # along the line: the same steering law as the driver on the run-up, whichever way the car points
+    want = ((-0.6 * car.pos[:, 1]) / sp).clamp(-0.08, 0.08) * torch.sign(v_long + 1e-6)
+    st = (3.0 * (want - xb[:, 1]) * torch.sign(yb[:, 1] + 1e-6) * 2.66 / sp).clamp(-0.12, 0.12)
+    # the distance left to the start line, in the direction it rolls
+    vx = car.vel[:, 0]
+    left = torch.where(vx < 0, car.pos[:, 0] - stop_x, torch.full_like(vx, 1.0))
+    need = car.mass() * vx * vx / (2.0 * left.clamp(min=0.3))
+    brake = torch.where(left < 0.3, torch.full_like(vx, 16000.0), torch.where(need > 0.25 * car.mass(), need, torch.zeros_like(vx))).clamp(max=16000.0)
+    car.brake = torch.where(down, brake, car.brake)
+    car.steer = torch.where(down, st, car.steer)
+    car.drive = torch.where(down, torch.zeros_like(car.drive), car.drive)
+
+
 def place_on_ground(car, x, y=0.0, yaw=0.0, v=0.0):
     """cars standing on the tarmac at x (heading +x unless yaw), at their static ride height"""
     torch = _t()
@@ -985,7 +1010,8 @@ class StuntEnv:
                 ph = d.phase.clone()
                 d.control(CTRL_DT / SUBSTEPS)
                 d.phase = torch.maximum(ph, d.phase)
-            c.brake = torch.where(self.t_td >= 0, torch.full_like(c.brake, 16000.0), torch.zeros_like(c.brake))   # down: brakes on
+            c.brake = torch.zeros_like(c.brake)
+            rollout(c, self.t_td >= 0)                  # down: rolling on along the line, braking to stop on the start line
             c.step(CTRL_DT / SUBSTEPS)
             c.flying = d.released & (c.t - d.off_t > 0.8) & (self.t_td < 0)     # down on its wheels: rolling onto the ramp's foot is no crash
             gd = (c.wheel_on & (c.wheel_kind == 0)).any(-1) | (c.touched_body > 0)
@@ -1179,7 +1205,7 @@ def frame_of(car, drv, i, t0=0.0):
             + [r3(x) for x in car.spin[i].tolist()] + [r3(x) for x in car.comp[i].tolist()]
             + [r3(car.fan[i, 0] * car.fan_seal[i, 0]), r3(car.fan[i, 1] * car.fan_seal[i, 1])]
             + [round(float(th[k]) / NOZ_MAX[k], 3) for k in range(10)]
-            + [round(float(car.air[i]), 1), r2(car.g_load[i]), int(drv.phase[i]), round(float(car.drive[i]) / DRIVE_MAX, 3)]
+            + [round(float(car.air[i]), 1), r2(car.g_load[i]), int(drv.phase[i]), round(float(car.drive[i] - car.brake[i]) / DRIVE_MAX, 3)]
             + [r2(car.touched_body[i]), r3(car.fan[i].mean())] + [r2(x) for x in lasers(car, i)])
 
 
@@ -1523,9 +1549,11 @@ def stunt(act, S, seed):
             if not bool(drv.released[0]):
                 drv.control(dt)
             if t_td is not None:
-                car.drive[:] = 0.0
-                car.brake[:] = 16000.0                                   # down: it brakes at once and stops where it landed
                 car.fan_cmd[:] = 0.0
+                rollout(car, torch.ones(1, dtype=torch.bool) if float(car.touched_body[0]) == 0 else torch.zeros(1, dtype=torch.bool), -float(S["runup"]))   # down: rolling on back to the start line
+                if float(car.touched_body[0]) > 0:
+                    car.drive[:] = 0.0
+                    car.brake[:] = 16000.0
             car.step(dt)
             car.flying = drv.released & (car.t - drv.off_t > 0.8) & (t_td is None)
             if t_td is None and bool(drv.released[0]) and (bool(((car.wheel_on & (car.wheel_kind == 0)).any(-1))[0]) or float(car.touched_body[0]) > 0):
@@ -1568,7 +1596,10 @@ def stunt(act, S, seed):
                           "impact": round(max(float(car.touched_body[0]), -(vz_td or 0.0)), 1)}
                 events.append((t, ("Landed on the line: %.1f m/s at touchdown, %.1f m off it, %.0f kg of air used" % (-vz_td, abs(y_td), result["air_used"] or 0)) if landed
                                else ("Down safely but off the line: %.1f m off it, %.0f deg askew" % (abs(y_td), math.degrees(h_td))) if safe else "Lost it: " + why))
-                t_end = t + (3.0 if landed else 4.0)
+                t_end = None if safe else t + 4.0                    # down safely: the run goes on until the car has stopped
+        if result is not None and t_end is None and float(car.vel[0].norm()) < 0.15:
+            t_end = t + 2.5
+            events.append((t, "Stopped back on the start line, %.1f m from where it started, %.0f m from where it touched down" % (abs(float(car.pos[0, 0]) + float(S["runup"])), abs(float(car.pos[0, 0]) - (x_td or 0.0)))))
         if t_end is not None and t >= t_end:
             break
     return rows, sorted(events, key=lambda e: e[0]), result
