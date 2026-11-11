@@ -1,0 +1,231 @@
+{
+    "id": "ws-ramp-stunt",
+    "version": "1",
+    "name": "Ramp stunt",
+    "category": "Simulation",
+    "icon": "rotate",
+    "side": "backend",
+    "customizable": true,
+    "summary": "A hypercar drives up a 21 m crescent ramp, hangs upside down on its suction fans, drives off the lip, and ten cold-gas nozzles land it: learn the landing by PPO on the GPU, or run the stunt live.",
+    "help": "What to do: Learn the landing (on the machine with the NVIDIA GPU) or Run the stunt (any machine). The physics: a rigid car (1,950 kg plus 250 kg of air) with suspension, tyres, all-wheel drive and steering; ten body points that must never touch; two suction fans under the floor (up to 2 g, only while the skirts seal); ten cold-gas nozzles (four blowing down, four up, two sideways in the nose) whose air leaves the car; a 5 m wide concrete crescent ramp (16 m, 9 m and 10 m arcs, then 8 m straight at 168 deg to its lip about 20.7 m up); drag and wind. A scripted driver takes the car up the ramp (the fans pull just hard enough, fully on upside down), stops Hold before the lip metres before it, waits Hold seconds, then drives off at Exit speed; from the moment the front wheels leave the lip the policy flies it 50 times a second. Learn the landing: four lessons (a short drop nearly level; on its side or nose down 4-10 m up; upside down 10-19 m up; off the lip, starts made by driving cars up the ramp); a lesson opens when half the attempts of the one before land. Landed: tyres on the tarmac under 3 m/s down and 15 deg of lean, nothing else touching, level a second later. Telemetry: train (lesson, landed %, landed_full % off the lip, touchdown_mps, air_kg, attempts, steps_per_s, minutes, outcomes.*), car (one attempt replayed in the 3D view every Replay every seconds, esasim.car/1), event (lessons). The policy is written when learning ends (time limit, target, or the button Finish now on the control channel) as stunt_policy_<date>_<NN>pct.pt: send it to a dataset and wire that dataset to Policies, so each training goes on from the furthest one. Run the stunt: wire the same dataset to Policies; the newest policy that lands off the lip flies (or the one named in Policy file). The car waits on the start line; the button Start (control channel) runs the stunt in real time, streamed on the car channel for a 3D view; Hold, Exit and Wind sliders change the next run; runs.csv records each one.",
+    "inputs": [
+        {
+            "id": "policy",
+            "label": "Policies",
+            "type": "files",
+            "optional": true,
+            "formats": [
+                "pt"
+            ],
+            "help": "The stunt-policy dataset (stunt_policy_*.pt): learning goes on from the furthest one; the stunt flies the newest that lands"
+        }
+    ],
+    "outputs": [
+        {
+            "id": "policy",
+            "label": "Policy",
+            "type": "files",
+            "formats": [
+                "pt"
+            ],
+            "help": "Learn the landing: stunt_policy_<date>_<NN>pct.pt (network, input scaling, lesson reached, share of attempts off the lip that land)"
+        },
+        {
+            "id": "curve",
+            "label": "Learning curve",
+            "type": "table",
+            "formats": [
+                "csv"
+            ],
+            "help": "Learn the landing: training.csv, minute by minute"
+        },
+        {
+            "id": "runs",
+            "label": "Runs",
+            "type": "table",
+            "formats": [
+                "csv"
+            ],
+            "help": "Run the stunt: runs.csv, each run's outcome, touchdown speed, lean and air used"
+        }
+    ],
+    "params": [
+        {
+            "key": "mode",
+            "label": "What to do",
+            "type": "select",
+            "default": "Learn the landing",
+            "options": [
+                "Learn the landing",
+                "Run the stunt"
+            ],
+            "help": "Learn the landing: PPO on the GPU, thousands of cars at once. Run the stunt: the whole stunt in real time with the newest policy"
+        },
+        {
+            "key": "accelerator",
+            "label": "Accelerator",
+            "type": "select",
+            "default": "auto",
+            "options": [
+                "auto",
+                "NVIDIA GPU",
+                "CPU"
+            ],
+            "help": "Learning: auto takes the NVIDIA GPU when this PyTorch can use it"
+        },
+        {
+            "key": "cars",
+            "label": "Cars at once",
+            "type": "number",
+            "default": 4096,
+            "min": 64,
+            "max": 65536,
+            "help": "Learning: parallel attempts (the CPU uses at most 1024)"
+        },
+        {
+            "key": "minutes",
+            "label": "Minutes at most",
+            "type": "number",
+            "default": 60,
+            "min": 1,
+            "max": 1440
+        },
+        {
+            "key": "target",
+            "label": "Stop at landing rate",
+            "type": "number",
+            "default": 0.9,
+            "min": 0.1,
+            "max": 1,
+            "help": "Share of attempts off the lip that land, to stop early"
+        },
+        {
+            "key": "replay_every",
+            "label": "Replay every (s)",
+            "type": "number",
+            "default": 12,
+            "min": 3,
+            "max": 600
+        },
+        {
+            "key": "from_scratch",
+            "label": "Start from scratch",
+            "type": "bool",
+            "default": false,
+            "help": "On: ignore the policies wired to Policies and learn from lesson 1"
+        },
+        {
+            "key": "seed",
+            "label": "Seed",
+            "type": "number",
+            "default": 1
+        },
+        {
+            "key": "hold",
+            "label": "Hold (s)",
+            "type": "number",
+            "default": 3,
+            "min": 0,
+            "max": 30,
+            "help": "The stunt: seconds upside down before driving off the lip"
+        },
+        {
+            "key": "exit",
+            "label": "Exit speed (m/s)",
+            "type": "number",
+            "default": 7,
+            "min": 3,
+            "max": 10,
+            "help": "The stunt: speed asked off the lip (slower than about 4 m/s scrapes the lip)"
+        },
+        {
+            "key": "wind",
+            "label": "Wind (m/s)",
+            "type": "number",
+            "default": 2,
+            "min": 0,
+            "max": 15
+        },
+        {
+            "key": "speed",
+            "label": "Run-in speed (m/s)",
+            "type": "number",
+            "default": 8,
+            "min": 4,
+            "max": 10
+        },
+        {
+            "key": "hold_back",
+            "label": "Hold before the lip (m)",
+            "type": "number",
+            "default": 7,
+            "min": 4,
+            "max": 12,
+            "help": "Where the car stops upside down, measured back from the lip"
+        },
+        {
+            "key": "runup",
+            "label": "Run-up (m)",
+            "type": "number",
+            "default": 60,
+            "min": 20,
+            "max": 150
+        },
+        {
+            "key": "policy_file",
+            "label": "Policy file",
+            "type": "text",
+            "default": "",
+            "help": "Empty: the newest policy that lands off the lip"
+        },
+        {
+            "key": "runs_per_run",
+            "label": "Stunts per run",
+            "type": "number",
+            "default": 1,
+            "min": 0,
+            "max": 100,
+            "help": "0: keep waiting for Start after each stunt"
+        },
+        {
+            "key": "auto_start",
+            "label": "Start by itself",
+            "type": "bool",
+            "default": false
+        },
+        {
+            "key": "channel",
+            "label": "Training channel",
+            "type": "text",
+            "default": "train"
+        },
+        {
+            "key": "car_channel",
+            "label": "Car channel",
+            "type": "text",
+            "default": "car"
+        },
+        {
+            "key": "events_channel",
+            "label": "Events channel",
+            "type": "text",
+            "default": "event"
+        },
+        {
+            "key": "control_channel",
+            "label": "Controls channel",
+            "type": "text",
+            "default": "control"
+        }
+    ],
+    "hardware": [
+        "cpu",
+        "nvidia"
+    ],
+    "packages": [
+        "torch[cuda]"
+    ],
+    "esasim": {
+        "version": 1
+    }
+}

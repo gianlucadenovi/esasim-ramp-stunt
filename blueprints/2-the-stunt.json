@@ -1,0 +1,198 @@
+{
+    "esasim": {
+        "kind": "blueprint",
+        "flow_id": 32
+    },
+    "name": "2 · The stunt",
+    "description": "Press Start: the car drives up the crescent ramp on its suction fans, holds upside down, drives off the lip, and the learned policy lands it with its air thrusters, live in 3D.",
+    "published_version": 0,
+    "updated": "2026-11-11 03:10:16",
+    "graph": {
+        "nodes": [
+            {
+                "id": "policy",
+                "type": "dataset",
+                "x": -380,
+                "y": 200,
+                "params": {
+                    "dataset": "stunt-policy",
+                    "version": "latest",
+                    "pattern": "*.pt"
+                },
+                "title": "stunt-policy (from flow 1)"
+            },
+            {
+                "id": "stunt",
+                "type": "ws-ramp-stunt",
+                "x": 0,
+                "y": 200,
+                "params": {
+                    "mode": "Run the stunt",
+                    "hold": 3,
+                    "exit": 7,
+                    "wind": 2,
+                    "speed": 8,
+                    "hold_back": 7,
+                    "runup": 60,
+                    "runs_per_run": 0,
+                    "auto_start": false
+                },
+                "title": "Ramp stunt: the stunt"
+            },
+            {
+                "id": "tel",
+                "type": "telemetry",
+                "x": 380,
+                "y": 200,
+                "params": {
+                    "interval": 0.5,
+                    "channels": "car,event",
+                    "keep": 150
+                },
+                "title": "The stunt"
+            },
+            {
+                "id": "main",
+                "type": "viewer-3d",
+                "x": 760,
+                "y": -160,
+                "params": {
+                    "quality": "high",
+                    "events_channel": "event",
+                    "controls": "button Start\nslider exit 3 10 7\nslider hold 0 10 3\nslider wind 0 10 2",
+                    "control_channel": "control",
+                    "camera": "free"
+                },
+                "title": "The stunt (director)"
+            },
+            {
+                "id": "cam_chase",
+                "type": "viewer-3d",
+                "x": 1140,
+                "y": -300,
+                "params": {
+                    "quality": "balanced",
+                    "camera": "car: chase"
+                },
+                "title": "Chase camera"
+            },
+            {
+                "id": "cam_onboard",
+                "type": "viewer-3d",
+                "x": 1140,
+                "y": -60,
+                "params": {
+                    "quality": "balanced",
+                    "camera": "car: onboard"
+                },
+                "title": "Onboard"
+            },
+            {
+                "id": "cam_side",
+                "type": "viewer-3d",
+                "x": 1140,
+                "y": 180,
+                "params": {
+                    "quality": "balanced",
+                    "camera": "car: side"
+                },
+                "title": "Side of the ramp"
+            },
+            {
+                "id": "runs_tbl",
+                "type": "gauge-view",
+                "x": 380,
+                "y": 460,
+                "params": {
+                    "fields": "car.speed_kmh,car.height_m,car.air_kg,car.g",
+                    "style": "number",
+                    "decimals": 1
+                },
+                "title": "Live numbers"
+            }
+        ],
+        "edges": [
+            {
+                "id": "policy.files>stunt.policy",
+                "from": {
+                    "node": "policy",
+                    "port": "files"
+                },
+                "to": {
+                    "node": "stunt",
+                    "port": "policy"
+                }
+            },
+            {
+                "id": "stunt.telemetry>tel.from",
+                "from": {
+                    "node": "stunt",
+                    "port": "telemetry"
+                },
+                "to": {
+                    "node": "tel",
+                    "port": "from"
+                }
+            },
+            {
+                "id": "tel.stream>main.scene",
+                "from": {
+                    "node": "tel",
+                    "port": "stream"
+                },
+                "to": {
+                    "node": "main",
+                    "port": "scene"
+                }
+            },
+            {
+                "id": "tel.stream>cam_chase.scene",
+                "from": {
+                    "node": "tel",
+                    "port": "stream"
+                },
+                "to": {
+                    "node": "cam_chase",
+                    "port": "scene"
+                }
+            },
+            {
+                "id": "tel.stream>cam_onboard.scene",
+                "from": {
+                    "node": "tel",
+                    "port": "stream"
+                },
+                "to": {
+                    "node": "cam_onboard",
+                    "port": "scene"
+                }
+            },
+            {
+                "id": "tel.stream>cam_side.scene",
+                "from": {
+                    "node": "tel",
+                    "port": "stream"
+                },
+                "to": {
+                    "node": "cam_side",
+                    "port": "scene"
+                }
+            },
+            {
+                "id": "stunt.telemetry>runs_tbl.data",
+                "from": {
+                    "node": "stunt",
+                    "port": "telemetry"
+                },
+                "to": {
+                    "node": "runs_tbl",
+                    "port": "data"
+                }
+            }
+        ],
+        "notes": [],
+        "dash": {
+            "items": []
+        }
+    }
+}
