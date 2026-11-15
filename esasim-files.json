@@ -1,0 +1,59 @@
+{
+    "esasim": {
+        "kind": "files",
+        "version": 1
+    },
+    "release": null,
+    "datasets": [
+        {
+            "name": "stunt-policy",
+            "dataset_id": 12,
+            "root": "stunt-policy",
+            "location": {
+                "id": 3,
+                "kind": "worker"
+            },
+            "made_by": [
+                "1 · Learn the landing: Ramp stunt: learn the landing"
+            ],
+            "version": 5,
+            "files": 5,
+            "bytes": 2981224,
+            "key": "4ad0e79b1ba0c11c0cf2710918912e86e5a80a040d9dd86da2fbf7606b1874e3",
+            "parts": [
+                {
+                    "zip": "files/stunt-policy.zip",
+                    "size": 2748111,
+                    "sha256": "014df95137748dae7ef8ad2e0f04cda22bf8c833ff3b36822584db537f5961b3",
+                    "files": 5,
+                    "in": "repo"
+                }
+            ],
+            "left_out": []
+        }
+    ],
+    "assets": [
+        {
+            "path": "audio/soundtrack.mp3",
+            "size": 3317804,
+            "sha256": "68f0f81146c1882ea59d235c945d55ab0f22f5018d14a053e25b09ee6567a0ab",
+            "zip": "assets/audio/soundtrack.mp3",
+            "in": "repo"
+        },
+        {
+            "path": "models/roadster.glb",
+            "size": 1929848,
+            "sha256": "24f6ed9bf550c29f6119ee41426ad5569e01557c8759a4233962fcb96d81387a",
+            "zip": "assets/models/roadster.glb",
+            "in": "repo"
+        },
+        {
+            "path": "textures/esacode-logo.png",
+            "size": 25614,
+            "sha256": "5165bee68f3a011323761eb87cfae64a9f5076c092c6f27f2627a1a1820c1091",
+            "zip": "assets/textures/esacode-logo.png",
+            "in": "repo"
+        }
+    ],
+    "saved": "2026-11-15T06:46:12+00:00"
+}
