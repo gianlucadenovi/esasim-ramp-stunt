@@ -7,6 +7,8 @@
     "name": "Ramp stunt",
     "description": "A two-seat electric hypercar drives up a 21 m crescent ramp, hangs upside down on its suction fans, drives off the lip, and its compressed-air thrusters roll it upright and land it on the tarmac. The thruster controller learns the landing by reinforcement learning on your GPU; then the whole stunt plays live in 3D.",
     "type": "autonomous-vehicles",
+    "cover": "upload",
+    "cover_file": "assets/cover.jpg",
     "readme": "README.md",
     "blueprints": [
         {

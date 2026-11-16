@@ -1,3 +1,7 @@
+<!-- esasim: cover -->
+![Ramp stunt](assets/cover.jpg)
+<!-- /esasim: cover -->
+
 # Ramp stunt
 
 **A two-seat electric hypercar drives up a 21 m crescent ramp, upside down on its suction fans over the top, and off its end: it falls with its momentum, and its compressed-air thrusters roll it over sideways and set it down on the road, on the white line and along it. The thruster controller learns the landing by itself, from its sensors.**
