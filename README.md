@@ -103,6 +103,11 @@ The files the project's views draw with (3D models, textures, sounds), in [asset
 
 - [audio/soundtrack.mp3](assets/audio/soundtrack.mp3) · 3.2 MB
 - [models/roadster.glb](assets/models/roadster.glb) · 1.8 MB
+- [stunt-policy/stunt_policy_20261110_2241_91pct.pt](assets/stunt-policy/stunt_policy_20261110_2241_91pct.pt) · 579 KB
+- [stunt-policy/stunt_policy_20261111_0029_98pct.pt](assets/stunt-policy/stunt_policy_20261111_0029_98pct.pt) · 583 KB
+- [stunt-policy/stunt_policy_20261111_0156_98pct.pt](assets/stunt-policy/stunt_policy_20261111_0156_98pct.pt) · 583 KB
+- [stunt-policy/stunt_policy_20261111_1313_99pct.pt](assets/stunt-policy/stunt_policy_20261111_1313_99pct.pt) · 583 KB
+- [stunt-policy/stunt_policy_20261111_1423_96pct.pt](assets/stunt-policy/stunt_policy_20261111_1423_96pct.pt) · 583 KB
 - [textures/esacode-logo.png](assets/textures/esacode-logo.png) · 25 KB
 
 Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.

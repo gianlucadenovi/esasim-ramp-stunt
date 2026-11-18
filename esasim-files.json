@@ -21,6 +21,41 @@
             "in": "repo"
         },
         {
+            "path": "stunt-policy/stunt_policy_20261110_2241_91pct.pt",
+            "size": 592968,
+            "sha256": "6245a579cceaa40ada39a696d313a160663ea5d3f96c4c2df7cb8ea28d600dba",
+            "zip": "assets/stunt-policy/stunt_policy_20261110_2241_91pct.pt",
+            "in": "repo"
+        },
+        {
+            "path": "stunt-policy/stunt_policy_20261111_0029_98pct.pt",
+            "size": 597064,
+            "sha256": "440a3313c9c0741286d2bf99dba265276483c3bf5b89145873f24b97eda0bf9b",
+            "zip": "assets/stunt-policy/stunt_policy_20261111_0029_98pct.pt",
+            "in": "repo"
+        },
+        {
+            "path": "stunt-policy/stunt_policy_20261111_0156_98pct.pt",
+            "size": 597064,
+            "sha256": "886561a78b7afb52f766aeef28ebeb6e19a502ad21b6701c4b4d6903aabd9e08",
+            "zip": "assets/stunt-policy/stunt_policy_20261111_0156_98pct.pt",
+            "in": "repo"
+        },
+        {
+            "path": "stunt-policy/stunt_policy_20261111_1313_99pct.pt",
+            "size": 597064,
+            "sha256": "39e330a9f22b9775f45cd0a8091f3539ed254b6e8cfc3ee7150ec452dec8b50c",
+            "zip": "assets/stunt-policy/stunt_policy_20261111_1313_99pct.pt",
+            "in": "repo"
+        },
+        {
+            "path": "stunt-policy/stunt_policy_20261111_1423_96pct.pt",
+            "size": 597064,
+            "sha256": "70df1728986d5ab3de953fc23813b2b6e66e1acd84e948ccd45ae3df5bbfb139",
+            "zip": "assets/stunt-policy/stunt_policy_20261111_1423_96pct.pt",
+            "in": "repo"
+        },
+        {
             "path": "textures/esacode-logo.png",
             "size": 25614,
             "sha256": "5165bee68f3a011323761eb87cfae64a9f5076c092c6f27f2627a1a1820c1091",
@@ -28,5 +63,5 @@
             "in": "repo"
         }
     ],
-    "saved": "2026-11-18T23:14:17+00:00"
+    "saved": "2026-11-18T23:15:01+00:00"
 }
