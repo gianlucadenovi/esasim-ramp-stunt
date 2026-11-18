@@ -4,34 +4,7 @@
         "version": 1
     },
     "release": null,
-    "datasets": [
-        {
-            "name": "stunt-policy",
-            "dataset_id": 12,
-            "root": "stunt-policy",
-            "location": {
-                "id": 3,
-                "kind": "worker"
-            },
-            "made_by": [
-                "1 · Learn the landing: Ramp stunt: learn the landing"
-            ],
-            "version": 5,
-            "files": 5,
-            "bytes": 2981224,
-            "key": "4ad0e79b1ba0c11c0cf2710918912e86e5a80a040d9dd86da2fbf7606b1874e3",
-            "parts": [
-                {
-                    "zip": "files/stunt-policy.zip",
-                    "size": 2748111,
-                    "sha256": "014df95137748dae7ef8ad2e0f04cda22bf8c833ff3b36822584db537f5961b3",
-                    "files": 5,
-                    "in": "repo"
-                }
-            ],
-            "left_out": []
-        }
-    ],
+    "datasets": [],
     "assets": [
         {
             "path": "audio/soundtrack.mp3",
@@ -55,5 +28,5 @@
             "in": "repo"
         }
     ],
-    "saved": "2026-11-15T06:46:12+00:00"
+    "saved": "2026-11-18T23:14:17+00:00"
 }

@@ -105,10 +105,4 @@ The files the project's views draw with (3D models, textures, sounds), in [asset
 - [models/roadster.glb](assets/models/roadster.glb) · 1.8 MB
 - [textures/esacode-logo.png](assets/textures/esacode-logo.png) · 25 KB
 
-### Files the blueprints make
-
-Kept with the project (listed in [esasim-files.json](esasim-files.json)), so it runs without making them again:
-
-- **stunt-policy** · 5 files, 2.8 MB · made by 1 · Learn the landing: Ramp stunt: learn the landing · in [files/stunt-policy.zip](files/stunt-policy.zip)
-
 Keys pasted in blocks (secret settings) are not saved here, nor are the team and the results of runs.
