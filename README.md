@@ -90,8 +90,8 @@ An [EsaSim](https://esacode.com/) project of the workspace Gianluca De Novi's wo
 
 ### Blueprints in this repository
 
-- [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 11 blocks · version 5
-- [2 · The stunt](blueprints/2-the-stunt.json) · 6 blocks · version 6
+- [1 · Learn the landing](blueprints/1-learn-the-landing.json) · 11 blocks · version 6
+- [2 · The stunt](blueprints/2-the-stunt.json) · 6 blocks · version 7
 
 ### Workspace blocks it uses
 
