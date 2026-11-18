@@ -5,8 +5,8 @@
     },
     "name": "1 · Learn the landing",
     "description": "Thousands of cars at once on the GPU learn to fly off the lip of the ramp and land, lesson by lesson; one attempt is replayed in 3D every few seconds. The policy goes to the stunt-policy dataset.",
-    "published_version": 6,
-    "updated": "2026-11-18 23:15:36",
+    "published_version": 7,
+    "updated": "2026-11-18 23:37:07",
     "graph": {
         "nodes": [
             {
@@ -34,17 +34,7 @@
                     "replay_every": 12,
                     "seed": 1
                 },
-                "title": "Ramp stunt: learn the landing",
-                "dest": {
-                    "location": 3,
-                    "name": "stunt-policy",
-                    "folder": "stunt-policy",
-                    "live": false,
-                    "move": false,
-                    "ports": [
-                        "policy"
-                    ]
-                }
+                "title": "Ramp stunt: learn the landing"
             },
             {
                 "id": "tel_car",
